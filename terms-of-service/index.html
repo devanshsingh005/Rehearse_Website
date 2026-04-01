@@ -7,19 +7,20 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <style>
-        :root { --primary: #0ea5e9; --text: #0f172a; --text-muted: #475569; --bg: #ffffff; --surface: #f8fafc; }
+        :root { --primary: #0ea5e9; --text: #0f172a; --text-muted: #475569; --bg: #ffffff; }
         body { font-family: 'Inter', sans-serif; line-height: 1.8; color: var(--text); margin: 0; background: var(--bg); }
         .nav { padding: 2rem; text-align: center; font-weight: 800; font-size: 1.25rem; color: var(--primary); letter-spacing: 1px; }
-        .hero { background: var(--surface); padding: 4rem 1.5rem; text-align: center; border-bottom: 1px solid #f1f5f9; }
+        .hero { background: #f8fafc; padding: 4rem 1.5rem; text-align: center; border-bottom: 1px solid #f1f5f9; }
         .hero h1 { font-size: 2.5rem; margin: 0; }
         .date { color: var(--text-muted); margin-top: 1rem; display: block; }
         .container { max-width: 800px; margin: 0 auto; padding: 4rem 1.5rem; }
         section { margin-bottom: 3.5rem; }
-        h2 { font-size: 1.4rem; color: var(--text); margin-bottom: 1.5rem; border-left: 4px solid var(--primary); padding-left: 1rem; }
-        h3 { font-size: 1.2rem; margin-top: 2rem; color: var(--text); }
+        h2 { font-size: 1.4rem; color: var(--text); margin-bottom: 1rem; display: flex; align-items: center; }
+        h2::before { content: ""; width: 4px; height: 24px; background: var(--primary); margin-right: 12px; border-radius: 2px; }
         p, li { color: var(--text-muted); margin-bottom: 1rem; }
-        ul { padding-left: 1.2rem; }
-        strong { color: var(--text); }
+        ul { padding-left: 1.5rem; }
+        .callout { background: #f0f9ff; border: 1px solid #bae6fd; padding: 1.5rem; border-radius: 8px; margin: 1.5rem 0; }
+        .callout-title { font-weight: 700; color: var(--primary); display: block; margin-bottom: 0.25rem; text-transform: uppercase; font-size: 0.85rem; }
         .footer { text-align: center; padding: 4rem; border-top: 1px solid #f1f5f9; color: var(--text-muted); font-size: 0.9rem; }
     </style>
 </head>
@@ -28,95 +29,97 @@
 <div class="nav">RE-HEARSE</div>
 
 <header class="hero">
-    <h1>Terms of Service for Re-Hearse</h1>
+    <h1>Terms of Service</h1>
     <span class="date">Last Updated: April 2026</span>
 </header>
 
 <div class="container">
     <section>
-        <h2>1. Introduction & Acceptance</h2>
-        <p>By accessing or using our platform, you agree to be bound by these Terms of Service. These Terms form a legally binding agreement between you and the platform operator. Please read them carefully before uploading any content or using any features.</p>
-        <p><strong>Important:</strong> Continued use of the platform after any updates to these Terms constitutes your acceptance of the revised Terms.</p>
+        <h2>1. Introduction & Acceptance of Terms</h2>
+        <p>By accessing or using Re-Hearse, you agree to be bound by these Terms of Service. If you do not agree, please stop using the platform immediately.</p>
+        <p>These Terms form a legally binding agreement between you and the platform operator. Please read them carefully before uploading any content or using any features.</p>
+        <div class="callout">
+            <span class="callout-title">Important</span>
+            Continued use of the platform after any updates to these Terms constitutes your acceptance of the revised Terms.
+        </div>
     </section>
 
     <section>
         <h2>2. Eligibility & Account Responsibilities</h2>
         <p>You must be at least 13 years of age (or the minimum age of digital consent in your country) to use this platform. By using it, you confirm that you meet this requirement.</p>
-        <ul>
-            <li><strong>Account Security:</strong> You are responsible for maintaining the confidentiality of your login credentials and for all activities that occur under your account. Notify us immediately if you suspect unauthorized access.</li>
-            <li><strong>Accuracy:</strong> You agree to provide accurate and current information when creating your account.</li>
-        </ul>
+        <p>You are responsible for maintaining the confidentiality of your login credentials and for all activities that occur under your account. Notify us immediately if you suspect unauthorized access.</p>
+        <p>You agree to provide accurate and current information when creating your account and to update it as necessary.</p>
     </section>
 
     <section>
-        <h2>3. Your Content - Ownership & Responsibility</h2>
+        <h2>3. Your Content — Ownership & Responsibility</h2>
         <p>You retain full ownership of all files, data, media, and other content you upload to the platform ("Your Content"). We do not claim any ownership rights over it.</p>
-        
-        <h3>Your Responsibility for Content</h3>
-        <p>You are solely responsible for Your Content. By uploading Your Content, you confirm that:</p>
+        <div class="callout">
+            <span class="callout-title">Legal Responsibility</span>
+            You are solely responsible for all content you upload. By uploading content, you confirm that you own the rights (including copyright for sheet music) or have obtained all necessary permissions.
+        </div>
+        <p>By uploading content, you confirm that:</p>
         <ul>
-            <li><strong>Ownership:</strong> You own the rights to the content (including copyright for any sheet music) or have obtained all necessary permissions and licenses.</li>
-            <li><strong>Compliance:</strong> Your content does not infringe on any third party's legal rights or violate any applicable laws.</li>
-            <li><strong>Legality:</strong> We do not review the legality or ownership of Your Content. Any legal consequences arising from Your Content are entirely your responsibility.</li>
+            <li>Your content does not infringe any third party's copyright, trademark, or privacy rights</li>
+            <li>Your content complies with all applicable laws in your jurisdiction</li>
+            <li>We are not responsible for reviewing the legality or ownership of your uploaded content</li>
         </ul>
     </section>
 
     <section>
         <h2>4. Limited License to the Platform</h2>
-        <p>To provide our service, you grant us a limited, non-exclusive, worldwide, royalty-free license to:</p>
+        <p>To operate the service, you grant us a limited, non-exclusive, worldwide, royalty-free license to:</p>
         <ul>
-            <li><strong>Store & Process:</strong> Host, store, and process Your Content solely as needed to deliver the service (e.g., converting sheet music into playable audio).</li>
-            <li><strong>Display:</strong> Display Your Content to you and specifically authorized users.</li>
+            <li>Host, store, and back up Your Content on our infrastructure (provided by Supabase)</li>
+            <li>Display Your Content to you and to those you specifically authorize</li>
+            <li>Process and transform Your Content solely as needed to deliver the service (e.g. converting sheet music to playable audio)</li>
         </ul>
-        <p>This license ends when you delete Your Content or close your account.</p>
+        <p>This license terminates when you delete Your Content or close your account.</p>
     </section>
 
     <section>
-        <h2>5. Prohibited Conduct</h2>
-        <p>You agree not to upload or transmit content that is:</p>
-        <ul>
-            <li><strong>Illegal or Harmful:</strong> Unlawful, threatening, defamatory, or contains malware.</li>
-            <li><strong>Infringing:</strong> Violates any copyright, trademark, or patent.</li>
-            <li><strong>Deceptive:</strong> Contains spam or deceptive material.</li>
-        </ul>
-        <p>We reserve the right to remove any content that violates these Terms without prior notice.</p>
+        <h2>5. Prohibited Content & Moderation</h2>
+        <p>You agree not to upload or transmit content that is unlawful, harmful, infringing, threatening, defamatory, or that contains malware.</p>
+        <p>We reserve the right, but not the obligation, to review, remove, or restrict access to any content that we believe violates these Terms or exposes the platform to legal risk.</p>
+        <p>We may suspend or permanently terminate your account for serious or repeated violations of these Terms.</p>
     </section>
 
     <section>
-        <h2>6. Third-Party Services</h2>
-        <p>The platform integrates with third-party providers (e.g., <strong>Supabase</strong> for backend/storage, <strong>Apple/Google</strong> for authentication). These providers operate under their own terms. We are not responsible for the availability or content of third-party services. Your use of such integrations is at your own risk.</p>
+        <h2>6. Third-Party Services & Integrations</h2>
+        <p>Re-Hearse integrates with third-party providers for services such as cloud storage (Supabase) and authentication (Apple/Google). These third parties operate under their own terms and privacy policies.</p>
+        <p>We are not responsible for the availability or content of third-party services. Your use of such integrations is at your own risk.</p>
     </section>
 
     <section>
         <h2>7. Disclaimers & Limitation of Liability</h2>
-        <p>Re-Hearse is provided on an <strong>"AS IS"</strong> and <strong>"AS AVAILABLE"</strong> basis, without warranties of any kind. Your use of the platform is entirely at your own risk.</p>
-        
-        <h3>Limitation of Liability</h3>
+        <div class="callout">
+            <span class="callout-title">Disclaimer</span>
+            Re-Hearse is provided "AS IS" and "AS AVAILABLE" basis, without warranties of any kind. Your use of the platform is at your own risk.
+        </div>
         <p>To the fullest extent permitted by law, the platform operator shall not be liable for any indirect, incidental, or consequential damages resulting from your use of the service.</p>
-        <ul>
-            <li><strong>Liability Cap:</strong> In no event shall our total liability to you exceed the greater of: (a) the amount you paid us in the previous 12 months, or (b) <strong>USD $50.00</strong>.</li>
-            <li><strong>User Content Liability:</strong> We are not liable for any harm or damage resulting from content uploaded by you or other users.</li>
-        </ul>
+        <p>In no event shall our total liability to you exceed the greater of: (a) total fees you have paid us in the past 12 months, or (b) USD $50.00.</p>
+        <div class="callout">
+            <span class="callout-title">User Content Liability</span>
+            We are not liable for any harm or loss resulting from content uploaded by you or other users. You assume full legal responsibility for Your Content.
+        </div>
     </section>
 
     <section>
-        <h2>8. Modifications to the Service & Terms</h2>
-        <p>We reserve the right to modify or discontinue the service at any time. We may also update these Terms periodically and will notify you of material changes. Continued use of the platform after updates constitutes acceptance.</p>
+        <h2>8. Modifications & Governing Law</h2>
+        <p>We reserve the right to modify or discontinue the platform at any time. We may update these Terms periodically and will notify you of material changes.</p>
+        <p>These Terms are governed by the laws of the jurisdiction in which the platform operator is based, without regard to its conflict-of-law provisions.</p>
     </section>
 
     <section>
-        <h2>9. Governing Law</h2>
-        <p>These Terms shall be governed by and construed in accordance with the laws of the jurisdiction where the platform operator is based, without regard to its conflict-of-law provisions.</p>
-    </section>
-
-    <section>
-        <h2>10. Contact Information</h2>
-        <p>If you have questions about these Terms, please contact us at <strong>devansh.singh20045@gmail.com</strong>.</p>
+        <h2>9. General Provisions</h2>
+        <p><strong>Entire Agreement:</strong> These Terms and our Privacy Policy constitute the entire agreement between you and Re-Hearse.</p>
+        <p><strong>Severability:</strong> If any provision is found to be unenforceable, the remaining provisions will continue in full force.</p>
+        <p><strong>Contact:</strong> For questions about these Terms, please contact us at <strong>devansh.singh20045@gmail.com</strong>.</p>
     </section>
 </div>
 
 <footer class="footer">
-    &copy; 2026 Re-Hearse. All rights reserved.
+    &copy; 2026 Re-Hearse. Operator: Devansh Singh
 </footer>
 
 </body>

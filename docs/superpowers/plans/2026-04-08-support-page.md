@@ -38,7 +38,7 @@
   <main>
     <section>
       <h2>How to Reach Us</h2>
-      <p>Email us at <strong><a href="mailto:devansh.singh20045@gmail.com">devansh.singh20045@gmail.com</a></strong>.</p>
+      <p>Email us at <strong><a href="mailto:letsrehearse.studio@gmail.com">letsrehearse.studio@gmail.com</a></strong>.</p>
     </section>
   </main>
 </div>
@@ -107,7 +107,7 @@ git commit -m "feat: add support page"
 
 ```html
 <a href="support/index.html" class="data-magnetic">Support</a>
-<a href="mailto:devansh.singh20045@gmail.com" class="data-magnetic">Contact Us</a>
+<a href="mailto:letsrehearse.studio@gmail.com" class="data-magnetic">Contact Us</a>
 ```
 
 - [ ] **Step 4: Verify navigation paths**
@@ -129,7 +129,7 @@ git commit -m "feat: link support page across the site"
 
 - [ ] **Step 1: Verify direct support-page content**
 
-Run: `rg -n "Support|How to Reach Us|What We Can Help With|Response Time|devansh.singh20045@gmail.com" support/index.html`
+Run: `rg -n "Support|How to Reach Us|What We Can Help With|Response Time|letsrehearse.studio@gmail.com" support/index.html`
 Expected: all required content is present
 
 - [ ] **Step 2: Verify no broken relative links in edited pages**

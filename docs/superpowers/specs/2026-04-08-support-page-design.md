@@ -30,7 +30,7 @@ The support page should include:
    - Short description explaining that users can contact Re-Hearse for help
 
 2. Contact section
-   - Primary support email: `devansh.singh20045@gmail.com`
+   - Primary support email: `letsrehearse.studio@gmail.com`
    - Clear mailto link
 
 3. Help topics section

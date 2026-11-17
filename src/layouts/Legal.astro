@@ -1,0 +1,194 @@
+---
+import Base from './Base.astro';
+
+interface Props {
+  title: string;
+  description: string;
+  eyebrow?: string;
+  lead?: string;
+  active?: string;
+  /** Adds an "On this page" sidebar. */
+  toc?: { id: string; label: string }[];
+}
+
+const { title, description, eyebrow = 'Legal', lead, active, toc } = Astro.props;
+---
+
+<Base title={title} description={description} active={active}>
+  <div class="page container">
+    <header class="page__head intro">
+      <p class="eyebrow">{eyebrow}</p>
+      <h1 class="page__title">{title}</h1>
+      {lead && <p class="page__lead">{lead}</p>}
+    </header>
+
+    <div class:list={['page__body', { 'page__body--toc': toc }]}>
+      {
+        toc && (
+          <nav class="toc" aria-label="On this page">
+            <p class="toc__title">On this page</p>
+            <ol role="list">
+              {toc.map((item) => (
+                <li>
+                  <a href={`#${item.id}`}>{item.label}</a>
+                </li>
+              ))}
+            </ol>
+          </nav>
+        )
+      }
+      <div class="prose">
+        <slot />
+      </div>
+    </div>
+  </div>
+</Base>
+
+<style>
+  .page {
+    padding-block: clamp(48px, 8vw, 96px) clamp(80px, 10vw, 128px);
+  }
+
+  .page__head {
+    max-width: 760px;
+    margin-bottom: clamp(40px, 6vw, 72px);
+  }
+
+  .page__title {
+    margin-top: 14px;
+    font-size: clamp(2.5rem, 1.6rem + 3.6vw, 4.25rem);
+    line-height: 1;
+    letter-spacing: -0.04em;
+    font-weight: 650;
+  }
+
+  .page__lead {
+    margin-top: 20px;
+    max-width: 620px;
+    font-size: clamp(1.0625rem, 1rem + 0.35vw, 1.25rem);
+    color: var(--text-2);
+  }
+
+  .page__body--toc {
+    display: grid;
+    grid-template-columns: 240px minmax(0, 1fr);
+    gap: clamp(40px, 6vw, 88px);
+    align-items: start;
+  }
+
+  .toc {
+    position: sticky;
+    top: calc(var(--nav-h) + 28px);
+  }
+
+  .toc__title {
+    margin-bottom: 14px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+
+  .toc ol {
+    display: grid;
+    gap: 2px;
+    border-left: 1px solid var(--line);
+  }
+
+  .toc a {
+    display: block;
+    margin-left: -1px;
+    padding: 7px 0 7px 16px;
+    border-left: 1px solid transparent;
+    font-size: 0.9375rem;
+    color: var(--text-2);
+    transition:
+      color 0.2s,
+      border-color 0.2s;
+  }
+
+  .toc a:hover {
+    color: var(--text);
+    border-left-color: var(--accent);
+  }
+
+  @media (max-width: 900px) {
+    .page__body--toc {
+      grid-template-columns: 1fr;
+    }
+
+    .toc {
+      display: none;
+    }
+  }
+
+  /* ---------- Long-form text ---------- */
+  .prose {
+    max-width: 720px;
+    color: var(--text-2);
+    line-height: 1.75;
+  }
+
+  .prose :global(* + section) {
+    margin-top: 56px;
+  }
+
+  .prose :global(h2) {
+    margin-bottom: 16px;
+    color: var(--text);
+    font-size: clamp(1.375rem, 1.2rem + 0.6vw, 1.625rem);
+    line-height: 1.25;
+    letter-spacing: -0.02em;
+    font-weight: 620;
+  }
+
+  .prose :global(p + p),
+  .prose :global(p + ul),
+  .prose :global(ul + p) {
+    margin-top: 14px;
+  }
+
+  .prose :global(ul) {
+    padding-left: 1.25em;
+  }
+
+  .prose :global(li + li) {
+    margin-top: 8px;
+  }
+
+  .prose :global(li::marker) {
+    color: var(--accent);
+  }
+
+  .prose :global(strong) {
+    color: var(--text);
+    font-weight: 620;
+  }
+
+  .prose :global(a) {
+    color: var(--accent);
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+  }
+
+  .prose :global(.callout) {
+    margin-block: 22px;
+    padding: 18px 22px;
+    border-radius: 16px;
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    background: var(--bg-raised);
+  }
+
+  .prose :global(.callout-title) {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 0.8125rem;
+    font-weight: 650;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+</style>

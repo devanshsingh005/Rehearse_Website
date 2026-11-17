@@ -1,0 +1,976 @@
+---
+/**
+ * A playable mini version of the Re-Hearse player: the next note glows, the
+ * playhead follows you, and "Listen" plays the phrase. Sound is synthesized
+ * with Web Audio, so there are no audio files to download.
+ */
+import Volume2 from '@lucide/astro/icons/volume-2';
+import RotateCcw from '@lucide/astro/icons/rotate-ccw';
+import AppStoreBadge from './AppStoreBadge.astro';
+import { GCLEF_PATH } from '../data/notation';
+
+// "Twinkle Twinkle Little Star", first line: the same piece in the app screenshots.
+const MELODY: { n: string; d: number }[] = [
+  { n: 'C4', d: 1 }, { n: 'C4', d: 1 }, { n: 'G4', d: 1 }, { n: 'G4', d: 1 },
+  { n: 'A4', d: 1 }, { n: 'A4', d: 1 }, { n: 'G4', d: 2 },
+  { n: 'F4', d: 1 }, { n: 'F4', d: 1 }, { n: 'E4', d: 1 }, { n: 'E4', d: 1 },
+  { n: 'D4', d: 1 }, { n: 'D4', d: 1 }, { n: 'C4', d: 2 },
+];
+
+// ---- Staff geometry, in SVG user units ----
+const SPACE = 14;
+const BOTTOM_LINE = 100; // E4
+const STAFF_LINES = [0, 1, 2, 3, 4].map((i) => BOTTOM_LINE - i * SPACE);
+const LETTERS = 'CDEFGAB';
+const diatonic = (note: string) => LETTERS.indexOf(note[0]) + Number(note.at(-1)) * 7;
+const noteY = (note: string) => BOTTOM_LINE - (diatonic(note) - diatonic('E4')) * (SPACE / 2);
+
+const BEAT = 46;
+const FIRST_MEASURE = 104;
+const MEASURE = 200;
+const END = FIRST_MEASURE + 4 * MEASURE;
+const VIEW_W = END + 10;
+const VIEW_H = 162;
+const LABEL_Y = 146;
+// Font units → staff: the glyph's staff space is 250 units.
+const CLEF_SCALE = SPACE / 250;
+
+let beat = 0;
+const notes = MELODY.map(({ n, d }, i) => {
+  const x = FIRST_MEASURE + Math.floor(beat / 4) * MEASURE + 28 + (beat % 4) * BEAT;
+  beat += d;
+  return { i, n, d, x, y: noteY(n) };
+});
+const barlines = [1, 2, 3].map((m) => FIRST_MEASURE + m * MEASURE);
+
+// ---- Keyboard: C4 to C5 ----
+const WHITE_KEYS = ['C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4', 'C5'];
+// [note, boundary index between white keys]
+const BLACK_KEYS: [string, number][] = [['C#4', 1], ['D#4', 2], ['F#4', 4], ['G#4', 5], ['A#4', 6]];
+const KEYBOARD_HINT: Record<string, string> = {
+  C4: 'A', 'C#4': 'W', D4: 'S', 'D#4': 'E', E4: 'D', F4: 'F', 'F#4': 'T',
+  G4: 'G', 'G#4': 'Y', A4: 'H', 'A#4': 'U', B4: 'J', C5: 'K',
+};
+
+const ariaMelody = MELODY.map((m) => m.n).join(', ');
+---
+
+<div
+  class="piano"
+  data-piano
+  data-melody={JSON.stringify(MELODY)}
+  data-xs={JSON.stringify(notes.map((n) => n.x))}
+  data-view-w={VIEW_W}
+>
+  <div class="piano__bar">
+    <p class="piano__prompt">
+      <span data-prompt-label>Play</span>
+      <strong data-prompt>{MELODY[0].n}</strong>
+    </p>
+    <div class="piano__progress">
+      <span
+        class="piano__track"
+        role="progressbar"
+        aria-label="Notes played"
+        aria-valuemin="0"
+        aria-valuemax={MELODY.length}
+        aria-valuenow="0"
+        data-progress
+      >
+        <span class="piano__fill" data-fill></span>
+      </span>
+      <span class="piano__count" data-count aria-hidden="true">0/{MELODY.length}</span>
+    </div>
+    <div class="piano__controls">
+      <button class="piano__btn" type="button" data-listen aria-pressed="false">
+        <Volume2 size={17} stroke-width={2} aria-hidden="true" />
+        <span data-listen-label>Listen</span>
+      </button>
+      <button class="piano__btn piano__btn--icon" type="button" data-restart aria-label="Start over">
+        <RotateCcw size={17} stroke-width={2} aria-hidden="true" />
+      </button>
+    </div>
+  </div>
+
+  <div class="piano__sheet">
+    <div class="piano__scroller" data-scroller>
+      <svg
+        class="piano__svg"
+        viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
+        role="img"
+        aria-label={`Sheet music for Twinkle Twinkle Little Star, first line: ${ariaMelody}`}
+      >
+        <g class="staff-lines">
+          {STAFF_LINES.map((y) => <line x1="8" x2={END + 2} y1={y} y2={y} />)}
+          {barlines.map((x) => <line x1={x} x2={x} y1={STAFF_LINES[4]} y2={BOTTOM_LINE} />)}
+          <line x1={END - 6} x2={END - 6} y1={STAFF_LINES[4]} y2={BOTTOM_LINE} />
+          <rect class="final-bar" x={END - 3} y={STAFF_LINES[4]} width="4.5" height={BOTTOM_LINE - STAFF_LINES[4]} />
+        </g>
+        <path
+          class="clef"
+          d={GCLEF_PATH}
+          transform={`translate(${12 - 50 * CLEF_SCALE} ${BOTTOM_LINE}) scale(${CLEF_SCALE} ${-CLEF_SCALE})`}
+        />
+        <g class="time-sig">
+          <text x="66" y={STAFF_LINES[2]}>4</text>
+          <text x="66" y={BOTTOM_LINE}>4</text>
+        </g>
+
+        <g class="playhead" data-playhead style={`transform: translateX(${notes[0].x}px)`}>
+          <rect x="-15" y="22" width="30" height="132" rx="7" />
+          <line x1="0" x2="0" y1="24" y2="152" />
+        </g>
+
+        {
+          notes.map((note) => (
+            <g class:list={['n', { 'is-current': note.i === 0 }]} data-n={note.i}>
+              <rect class="trail" x={note.x + 9} y={note.y - 3} width={note.d * BEAT - 18} height="6" rx="3" />
+              {note.n === 'C4' && <line class="ledger" x1={note.x - 13} x2={note.x + 13} y1={note.y} y2={note.y} />}
+              {note.d === 2 ? (
+                <ellipse class="head head--open" cx={note.x} cy={note.y} rx="7.1" ry="4.7" transform={`rotate(-22 ${note.x} ${note.y})`} />
+              ) : (
+                <ellipse class="head" cx={note.x} cy={note.y} rx="8.2" ry="5.9" transform={`rotate(-22 ${note.x} ${note.y})`} />
+              )}
+              <line class="stem" x1={note.x + 7.4} x2={note.x + 7.4} y1={note.y - 1.5} y2={note.y - 47} />
+              <text class="label" x={note.x} y={LABEL_Y}>{note.n}</text>
+            </g>
+          ))
+        }
+      </svg>
+    </div>
+  </div>
+
+  <div class="keys" data-keys>
+    {
+      WHITE_KEYS.map((n) => (
+        <button class:list={['key', 'key--white', { 'is-target': n === MELODY[0].n }]} type="button" data-key={n} aria-label={n}>
+          <kbd class="key__hint" aria-hidden="true">{KEYBOARD_HINT[n]}</kbd>
+          <span class="key__label" aria-hidden="true">{n}</span>
+        </button>
+      ))
+    }
+    {
+      BLACK_KEYS.map(([n, boundary]) => (
+        <button class="key key--black" type="button" data-key={n} aria-label={n.replace('#', ' sharp ')} style={`--b: ${boundary}`}>
+          <kbd class="key__hint" aria-hidden="true">{KEYBOARD_HINT[n]}</kbd>
+          <span class="key__label" aria-hidden="true">{n}</span>
+        </button>
+      ))
+    }
+  </div>
+
+  <p class="sr-only" aria-live="polite" data-live></p>
+
+  <div class="piano__done" data-done hidden>
+    <p class="piano__done-kicker">Bravo!</p>
+    <p class="piano__done-title">You just played the first line of <em>Twinkle Twinkle Little Star.</em></p>
+    <p class="piano__done-text"><span class="nobr">Re-Hearse</span> does this for any sheet you scan, with both hands.</p>
+    <div class="piano__done-actions">
+      <AppStoreBadge height={46} />
+      <button class="btn btn--ghost-dark" type="button" data-again>Play again</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  type Step = { n: string; d: number };
+
+  const KEY_TO_NOTE: Record<string, string> = {
+    a: 'C4', w: 'C#4', s: 'D4', e: 'D#4', d: 'E4', f: 'F4', t: 'F#4',
+    g: 'G4', y: 'G#4', h: 'A4', u: 'A#4', j: 'B4', k: 'C5',
+  };
+  const SEMITONES: Record<string, number> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+  const BEAT_SECONDS = 0.6; // 100 BPM
+
+  const frequency = (note: string) => {
+    const midi = 12 * (Number(note.at(-1)) + 1) + SEMITONES[note[0]] + (note[1] === '#' ? 1 : 0);
+    return 440 * 2 ** ((midi - 69) / 12);
+  };
+
+  /**
+   * A soft piano-like voice: a few harmonics through a closing low-pass filter.
+   * Browsers only start audio after a user gesture, and on touch screens the
+   * gesture is the end of the tap, so a note pressed before that is held in
+   * `pending` and played as soon as audio is allowed.
+   */
+  function createSynth() {
+    let ctx: AudioContext | null = null;
+    let out: GainNode | null = null;
+    let pending: string | null = null;
+
+    const setup = () => {
+      if (!ctx) {
+        // Let the demo play even when an iPhone's ring/silent switch is on.
+        const nav = navigator as Navigator & { audioSession?: { type: string } };
+        try {
+          if (nav.audioSession) nav.audioSession.type = 'playback';
+        } catch {
+          /* not supported */
+        }
+        ctx = new AudioContext({ latencyHint: 'interactive' });
+        const compressor = ctx.createDynamicsCompressor();
+        compressor.threshold.value = -16;
+        compressor.ratio.value = 3;
+        out = ctx.createGain();
+        out.gain.value = 0.5;
+        out.connect(compressor).connect(ctx.destination);
+      }
+      return ctx;
+    };
+
+    const voice = (audio: AudioContext, note: string, length: number) => {
+      if (!out) return;
+      const f = frequency(note);
+      const t = audio.currentTime + 0.004;
+
+      const env = audio.createGain();
+      env.gain.setValueAtTime(0.0001, t);
+      env.gain.exponentialRampToValueAtTime(0.9, t + 0.006);
+      env.gain.exponentialRampToValueAtTime(0.32, t + 0.22);
+      env.gain.exponentialRampToValueAtTime(0.0001, t + length);
+
+      const filter = audio.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.Q.value = 0.5;
+      filter.frequency.setValueAtTime(Math.min(f * 9, 9000), t);
+      filter.frequency.exponentialRampToValueAtTime(Math.max(f * 1.5, 380), t + length);
+      filter.connect(env).connect(out);
+
+      const partials: [number, OscillatorType, number][] = [
+        [1, 'triangle', 0.62],
+        [2, 'sine', 0.24],
+        [3, 'sine', 0.09],
+        [4.02, 'sine', 0.04],
+      ];
+      for (const [multiple, type, level] of partials) {
+        const osc = audio.createOscillator();
+        const gain = audio.createGain();
+        osc.type = type;
+        osc.frequency.value = f * multiple;
+        gain.gain.value = level;
+        osc.connect(gain).connect(filter);
+        osc.start(t);
+        osc.stop(t + length + 0.05);
+      }
+    };
+
+    const flushPending = (audio: AudioContext) => {
+      if (!pending || audio.state !== 'running') return;
+      const note = pending;
+      pending = null;
+      voice(audio, note, 1.5);
+    };
+
+    const resume = (audio: AudioContext) => {
+      audio
+        .resume()
+        .then(() => flushPending(audio))
+        .catch(() => {});
+    };
+
+    return {
+      /** Call from gesture events (pointerup, touchend) so audio can start. */
+      unlock() {
+        const audio = setup();
+        if (audio.state !== 'running') resume(audio);
+      },
+      play(note: string, length = 1.5) {
+        const audio = setup();
+        if (audio.state === 'running') {
+          voice(audio, note, length);
+        } else {
+          pending = note;
+          resume(audio);
+        }
+      },
+    };
+  }
+
+  function initPiano(root: HTMLElement) {
+    const melody: Step[] = JSON.parse(root.dataset.melody ?? '[]');
+    const xs: number[] = JSON.parse(root.dataset.xs ?? '[]');
+    const viewW = Number(root.dataset.viewW);
+    const $ = <T extends Element>(sel: string) => root.querySelector<T>(sel)!;
+
+    const noteEls = [...root.querySelectorAll<SVGGElement>('[data-n]')];
+    const keys = new Map<string, HTMLButtonElement>();
+    root.querySelectorAll<HTMLButtonElement>('[data-key]').forEach((k) => keys.set(k.dataset.key!, k));
+
+    const playhead = $<SVGGElement>('[data-playhead]');
+    const scroller = $<HTMLElement>('[data-scroller]');
+    const svg = $<SVGSVGElement>('.piano__svg');
+    const prompt = $<HTMLElement>('[data-prompt]');
+    const promptLabel = $<HTMLElement>('[data-prompt-label]');
+    const progress = $<HTMLElement>('[data-progress]');
+    const fill = $<HTMLElement>('[data-fill]');
+    const count = $<HTMLElement>('[data-count]');
+    const live = $<HTMLElement>('[data-live]');
+    const listenBtn = $<HTMLButtonElement>('[data-listen]');
+    const listenLabel = $<HTMLElement>('[data-listen-label]');
+    const done = $<HTMLElement>('[data-done]');
+    const again = $<HTMLButtonElement>('[data-again]');
+
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const synth = createSynth();
+    let pos = 0;
+    let listening = false;
+    let timers: number[] = [];
+    let inView = false;
+
+    const follow = () => {
+      if (scroller.scrollWidth <= scroller.clientWidth + 1) return;
+      const x = (xs[Math.min(pos, xs.length - 1)] / viewW) * svg.clientWidth;
+      scroller.scrollTo({
+        left: Math.max(0, x - scroller.clientWidth * 0.35),
+        behavior: reduceMotion.matches ? 'auto' : 'smooth',
+      });
+    };
+
+    function render(announce = true) {
+      const finished = pos >= melody.length;
+      noteEls.forEach((el, i) => {
+        el.classList.toggle('is-done', i < pos);
+        el.classList.toggle('is-current', i === pos);
+      });
+      const target = finished ? null : melody[pos].n;
+      keys.forEach((key, note) => key.classList.toggle('is-target', !listening && note === target));
+
+      playhead.style.transform = `translateX(${xs[Math.min(pos, xs.length - 1)]}px)`;
+      playhead.classList.toggle('is-hidden', finished);
+
+      promptLabel.textContent = listening ? 'Listen' : finished ? 'Done' : 'Play';
+      prompt.textContent = finished ? '✓' : melody[pos].n;
+      fill.style.transform = `scaleX(${pos / melody.length})`;
+      count.textContent = `${pos}/${melody.length}`;
+      progress.setAttribute('aria-valuenow', String(pos));
+      done.hidden = !(finished && !listening);
+      if (announce && !listening) live.textContent = finished ? 'Finished the line.' : `Play ${melody[pos].n}`;
+      follow();
+    }
+
+    const flash = (note: string, className: string, ms: number) => {
+      const key = keys.get(note);
+      if (!key) return;
+      key.classList.add(className);
+      window.setTimeout(() => key.classList.remove(className), ms);
+    };
+
+    function stopListening(resetTo = 0) {
+      timers.forEach(clearTimeout);
+      timers = [];
+      if (!listening) return;
+      listening = false;
+      listenBtn.setAttribute('aria-pressed', 'false');
+      listenLabel.textContent = 'Listen';
+      pos = resetTo;
+      render();
+    }
+
+    function listen() {
+      stopListening();
+      listening = true;
+      listenBtn.setAttribute('aria-pressed', 'true');
+      listenLabel.textContent = 'Stop';
+      live.textContent = 'Playing the line.';
+      let t = 0;
+      melody.forEach((step, i) => {
+        timers.push(
+          window.setTimeout(() => {
+            pos = i;
+            render(false);
+            synth.play(step.n, step.d * BEAT_SECONDS + 0.6);
+            flash(step.n, 'is-down', step.d * BEAT_SECONDS * 1000 * 0.85);
+          }, t * 1000),
+        );
+        t += step.d * BEAT_SECONDS;
+      });
+      timers.push(window.setTimeout(() => stopListening(0), t * 1000 + 300));
+    }
+
+    function celebrate() {
+      ['C4', 'E4', 'G4', 'C5'].forEach((n, i) => {
+        window.setTimeout(() => synth.play(n, 1.8), 260 + i * 90);
+      });
+      again.focus({ preventScroll: true });
+    }
+
+    function press(note: string) {
+      if (listening) stopListening(0);
+      synth.play(note);
+      if (pos >= melody.length) return;
+      if (note === melody[pos].n) {
+        pos += 1;
+        render();
+        if (pos === melody.length) celebrate();
+      } else {
+        flash(note, 'is-wrong', 380);
+        const target = keys.get(melody[pos].n);
+        target?.classList.remove('is-nudge');
+        void target?.offsetWidth; // restart the nudge animation
+        target?.classList.add('is-nudge');
+      }
+    }
+
+    // ---- Pointer and keyboard input ----
+    keys.forEach((key, note) => {
+      key.addEventListener('pointerdown', (event) => {
+        if (event.button !== 0) return;
+        event.preventDefault(); // keep focus and text selection where they are
+        key.classList.add('is-down');
+        press(note);
+      });
+      const release = () => key.classList.remove('is-down');
+      key.addEventListener('pointerup', release);
+      key.addEventListener('pointerleave', release);
+      key.addEventListener('pointercancel', release);
+      // Enter/Space on a focused key arrives as a click with no pointer.
+      key.addEventListener('click', (event) => {
+        if (event.detail === 0) {
+          flash(note, 'is-down', 160);
+          press(note);
+        }
+      });
+    });
+
+    // iOS only unlocks audio on the end of a tap.
+    root.addEventListener('pointerup', synth.unlock);
+    root.addEventListener('touchend', synth.unlock, { passive: true });
+
+    document.addEventListener('keydown', (event) => {
+      if (!inView || event.repeat || event.metaKey || event.ctrlKey || event.altKey) return;
+      if ((event.target as Element).closest('input, textarea, select, [contenteditable]')) return;
+      const note = KEY_TO_NOTE[event.key.toLowerCase()];
+      if (!note) return;
+      event.preventDefault();
+      keys.get(note)?.classList.add('is-down');
+      press(note);
+    });
+    document.addEventListener('keyup', (event) => {
+      const note = KEY_TO_NOTE[event.key.toLowerCase()];
+      if (note) keys.get(note)?.classList.remove('is-down');
+    });
+
+    listenBtn.addEventListener('click', () => (listening ? stopListening(0) : listen()));
+    $<HTMLButtonElement>('[data-restart]').addEventListener('click', () => {
+      stopListening();
+      pos = 0;
+      render();
+    });
+    again.addEventListener('click', () => {
+      pos = 0;
+      render();
+      keys.get(melody[0].n)?.focus({ preventScroll: true });
+    });
+
+    new IntersectionObserver(
+      ([entry]) => {
+        inView = entry.isIntersecting;
+        if (!inView) stopListening(pos);
+      },
+      { threshold: 0.3 },
+    ).observe(root);
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) stopListening(0);
+    });
+
+    render(false);
+  }
+
+  const root = document.querySelector<HTMLElement>('[data-piano]');
+  if (root) initPiano(root);
+</script>
+
+<style>
+  .piano {
+    position: relative;
+    max-width: 1000px;
+    margin-inline: auto;
+    padding: clamp(12px, 2.2vw, 20px);
+    border-radius: var(--radius-xl);
+    background: var(--paper);
+    color: var(--ink);
+    box-shadow:
+      0 0 0 1px rgb(255 255 255 / 0.1),
+      0 70px 120px -50px rgb(0 0 0 / 0.85),
+      0 0 120px -20px rgb(239 147 6 / 0.18);
+  }
+
+  /* ---------- Top bar ---------- */
+  .piano__bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .piano__prompt,
+  .piano__btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 40px;
+    padding: 0 16px;
+    border-radius: 999px;
+    background: #fff;
+    box-shadow:
+      0 0 0 1px rgb(0 0 0 / 0.06),
+      0 1px 2px rgb(0 0 0 / 0.06);
+    font-size: 0.9375rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .piano__prompt {
+    min-width: 108px;
+    color: var(--ink-2);
+  }
+
+  .piano__prompt strong {
+    color: var(--rh-text);
+    font-weight: 750;
+    font-size: 1.0625rem;
+  }
+
+  .piano__progress {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .piano__track {
+    flex: 1;
+    height: 6px;
+    border-radius: 999px;
+    background: #e3ded7;
+    overflow: hidden;
+  }
+
+  .piano__fill {
+    display: block;
+    height: 100%;
+    background: var(--accent);
+    border-radius: inherit;
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 0.4s var(--ease-out);
+  }
+
+  .piano__count {
+    font-size: 0.875rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink-2);
+    min-width: 3.4em;
+  }
+
+  .piano__controls {
+    display: flex;
+    gap: 8px;
+  }
+
+  .piano__btn {
+    color: var(--ink);
+    -webkit-tap-highlight-color: transparent;
+    transition:
+      background-color 0.2s,
+      transform 0.15s var(--ease-out);
+  }
+
+  .piano__btn:hover {
+    background: #fffaf2;
+  }
+
+  .piano__btn:active {
+    transform: scale(0.96);
+  }
+
+  .piano__btn[aria-pressed='true'] {
+    background: var(--ink);
+    color: var(--paper);
+  }
+
+  .piano__btn--icon {
+    width: 40px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  /* ---------- Sheet ---------- */
+  .piano__sheet {
+    margin-top: 12px;
+    border-radius: 20px;
+    background: var(--paper-2);
+    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.05);
+    overflow: hidden;
+  }
+
+  .piano__scroller {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    padding: 6px 4px 0;
+  }
+
+  .piano__scroller::-webkit-scrollbar {
+    display: none;
+  }
+
+  .piano__svg {
+    width: max(100%, 760px);
+    max-width: none;
+    height: auto;
+    overflow: visible;
+    font-family: inherit;
+  }
+
+  .staff-lines line {
+    stroke: #3b3733;
+    stroke-width: 1.2;
+  }
+
+  .final-bar,
+  .clef,
+  .time-sig text {
+    fill: var(--ink);
+  }
+
+  .time-sig text {
+    font-size: 38.5px;
+    font-weight: 800;
+    text-anchor: middle;
+  }
+
+  .n {
+    color: var(--ink);
+    transition: color 0.25s;
+  }
+
+  .head {
+    fill: currentColor;
+  }
+
+  .head--open {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.6;
+  }
+
+  .stem {
+    stroke: currentColor;
+    stroke-width: 1.8;
+  }
+
+  .ledger {
+    stroke: #3b3733;
+    stroke-width: 1.6;
+  }
+
+  .trail {
+    fill: var(--rh);
+    opacity: 0.14;
+    transition: opacity 0.25s;
+  }
+
+  .label {
+    font-size: 14px;
+    font-weight: 700;
+    text-anchor: middle;
+    fill: var(--rh-text);
+    transition: fill 0.25s;
+  }
+
+  .n.is-done {
+    color: #aaa39b;
+  }
+
+  .n.is-done .label {
+    fill: #b06a63;
+  }
+
+  .n.is-done .trail {
+    opacity: 0.07;
+  }
+
+  .n.is-current {
+    color: var(--rh);
+  }
+
+  .n.is-current .label {
+    font-weight: 800;
+  }
+
+  .n.is-current .trail {
+    opacity: 0.3;
+  }
+
+  .playhead {
+    transition:
+      transform 0.45s var(--ease-out),
+      opacity 0.3s;
+  }
+
+  .playhead rect {
+    fill: rgb(239 147 6 / 0.16);
+  }
+
+  .playhead line {
+    stroke: var(--accent);
+    stroke-width: 3;
+    stroke-linecap: round;
+  }
+
+  .playhead.is-hidden {
+    opacity: 0;
+  }
+
+  /* ---------- Keys ---------- */
+  .keys {
+    position: relative;
+    display: flex;
+    height: clamp(150px, 21vw, 216px);
+    margin-top: 12px;
+    padding: 0 2px;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+  }
+
+  .key {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+  }
+
+  .key--white {
+    position: relative;
+    flex: 1;
+    margin: 0 2px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    padding-bottom: 14px;
+    border-radius: 5px 5px 14px 14px;
+    background: linear-gradient(#ffffff, #f8f5f1);
+    box-shadow:
+      inset 0 -7px 0 #e4ded6,
+      0 0 0 1px rgb(0 0 0 / 0.08),
+      0 2px 3px rgb(0 0 0 / 0.08);
+    color: #6b645d;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    transition:
+      transform 0.08s,
+      box-shadow 0.12s,
+      background 0.12s,
+      color 0.12s;
+  }
+
+  .key--black {
+    position: absolute;
+    z-index: 2;
+    top: 0;
+    left: calc(var(--b) / 8 * 100%);
+    translate: -50% 0;
+    width: 7.6%;
+    height: 60%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+    padding-bottom: 9px;
+    border-radius: 0 0 9px 9px;
+    background: linear-gradient(#34302c, #0f0e0d 80%);
+    box-shadow:
+      inset 0 -6px 0 #000,
+      inset 0 1px 0 rgb(255 255 255 / 0.14),
+      0 4px 8px rgb(0 0 0 / 0.35);
+    color: #b9b2aa;
+    font-size: 0.625rem;
+    font-weight: 650;
+    transition:
+      transform 0.08s,
+      box-shadow 0.12s,
+      background 0.12s;
+  }
+
+  .key__hint {
+    display: none;
+    min-width: 1.7em;
+    padding: 1px 5px;
+    border-radius: 6px;
+    border: 1px solid currentColor;
+    font-size: 0.6875rem;
+    font-weight: 650;
+    line-height: 1.4;
+    text-align: center;
+    opacity: 0.5;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .key__hint {
+      display: block;
+    }
+
+    .key--white:hover {
+      background: linear-gradient(#fffdf8, #f6f1ea);
+    }
+  }
+
+  .key--white.is-down {
+    transform: translateY(2px);
+    background: linear-gradient(#f1ece5, #e9e3db);
+    box-shadow:
+      inset 0 -3px 0 #ddd6cc,
+      0 0 0 1px rgb(0 0 0 / 0.08);
+  }
+
+  .key--black.is-down {
+    transform: translateY(2px);
+    box-shadow:
+      inset 0 -3px 0 #000,
+      inset 0 1px 0 rgb(255 255 255 / 0.1),
+      0 2px 4px rgb(0 0 0 / 0.3);
+  }
+
+  /* The key to press next: right-hand red, as in the app. */
+  .key.is-target {
+    color: #fff;
+    background: linear-gradient(#ff4a3f, #d92b20 70%);
+    box-shadow:
+      inset 0 -7px 0 #b51f15,
+      0 0 0 1px rgb(0 0 0 / 0.05),
+      0 12px 28px -8px rgb(255 59 48 / 0.6);
+  }
+
+  .key--white.is-target.is-down {
+    background: linear-gradient(#e83a2f, #c8261c 70%);
+    box-shadow: inset 0 -3px 0 #a51c13;
+  }
+
+  .key.is-wrong {
+    background: linear-gradient(#ece7e1, #e2dcd4);
+  }
+
+  .key--black.is-wrong {
+    background: linear-gradient(#5b5550, #2d2a27);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .key.is-nudge {
+      animation: nudge 0.45s var(--ease-out);
+    }
+  }
+
+  @keyframes nudge {
+    30% {
+      transform: translateY(5px);
+    }
+    60% {
+      transform: translateY(-1px);
+    }
+  }
+
+  /* ---------- Finished ---------- */
+  .piano__done {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    display: grid;
+    place-content: center;
+    justify-items: center;
+    gap: 10px;
+    padding: 24px;
+    border-radius: inherit;
+    background: rgb(244 241 237 / 0.94);
+    text-align: center;
+  }
+
+  .piano__done[hidden] {
+    display: none;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .piano__done {
+      animation: intro-up 0.5s var(--ease-out) both;
+    }
+  }
+
+  .piano__done-kicker {
+    font-size: 0.8125rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #b45f00;
+  }
+
+  .piano__done-title {
+    max-width: 22ch;
+    font-size: clamp(1.5rem, 1.1rem + 1.6vw, 2.25rem);
+    font-weight: 650;
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+    text-wrap: balance;
+  }
+
+  .piano__done-title em {
+    font-family: var(--font-serif);
+    font-weight: 400;
+    font-size: 1.06em;
+    letter-spacing: -0.01em;
+  }
+
+  .piano__done-text {
+    color: var(--ink-2);
+  }
+
+  .piano__done-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 12px;
+    margin-top: 10px;
+  }
+
+  .btn--ghost-dark {
+    height: 46px;
+    border: 1px solid rgb(0 0 0 / 0.14);
+    color: var(--ink);
+    background: #fff;
+  }
+
+  .btn--ghost-dark:hover {
+    background: #fffaf2;
+  }
+
+  @media (max-width: 640px) {
+    .piano {
+      border-radius: var(--radius-lg);
+    }
+
+    .piano__bar {
+      flex-wrap: wrap;
+    }
+
+    .piano__progress {
+      order: 3;
+      flex-basis: 100%;
+    }
+
+    .piano__controls {
+      margin-left: auto;
+    }
+
+    .key__label {
+      font-size: 0.75rem;
+    }
+
+    .key--black .key__label {
+      display: none;
+    }
+  }
+</style>

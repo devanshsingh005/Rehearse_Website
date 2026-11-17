@@ -1,0 +1,155 @@
+---
+import Mail from '@lucide/astro/icons/mail';
+import Copy from '@lucide/astro/icons/copy';
+import Check from '@lucide/astro/icons/check';
+import Legal from '../layouts/Legal.astro';
+import { SITE } from '../data/site';
+---
+
+<Legal
+  title="Support"
+  eyebrow="Help"
+  active="support"
+  description="Get support for Re-Hearse, including account help, upload issues, and general app assistance."
+  lead="Questions, bugs or account help: send us an email and we'll get back to you."
+>
+  <div class="contact">
+    <p class="contact__label">How to reach us</p>
+    <a class="contact__email" href={`mailto:${SITE.email}`}>{SITE.email}</a>
+    <div class="contact__actions">
+      <a class="btn btn--primary" href={`mailto:${SITE.email}`}><Mail aria-hidden="true" /> Email support</a>
+      <button class="btn btn--ghost" type="button" data-copy={SITE.email}>
+        <span class="copy-idle"><Copy aria-hidden="true" /> Copy address</span>
+        <span class="copy-done"><Check aria-hidden="true" /> Copied</span>
+      </button>
+    </div>
+    <p class="contact__note">
+      When you contact us, include a short description of the issue and any helpful details so we can assist you faster.
+    </p>
+  </div>
+
+  <div class="callout">
+    <strong class="callout-title">Helpful details to include</strong>
+    Device model, iOS version, app version, and what happened before the issue appeared.
+  </div>
+
+  <section>
+    <h2>Response Time</h2>
+    <p>We aim to respond as soon as possible, typically within 2-3 business days.</p>
+    <p>For the fastest help, use the email above and include screenshots or a clear description when relevant.</p>
+  </section>
+
+  <section>
+    <h2>About Re-Hearse</h2>
+    <p>
+      Re-Hearse helps musicians work with sheet music more efficiently through upload tools, notation processing,
+      playback support, and practice-focused features.
+    </p>
+  </section>
+
+  <section>
+    <h2>What We Can Help With</h2>
+    <ul>
+      <li>Account access or sign-in questions</li>
+      <li>Sheet upload and processing issues</li>
+      <li>Playback, notation, or app behavior problems</li>
+      <li>General questions about how <span class="nobr">Re-Hearse</span> works</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Basic Troubleshooting</h2>
+    <ul>
+      <li>Make sure your app is updated to the latest available version.</li>
+      <li>Check that your device is running a supported version of iOS.</li>
+      <li>Try closing and reopening the app if a screen becomes unresponsive.</li>
+      <li>For upload issues, confirm the file is clear, complete, and readable before retrying.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Account and Data Help</h2>
+    <p>
+      If you need help with account access, uploaded files, or privacy-related questions, contact us at
+      <strong><a href={`mailto:${SITE.email}`}>{SITE.email}</a></strong>.
+    </p>
+    <p>For privacy details, you can also review our <a href="/privacy-policy/">Privacy Policy</a>.</p>
+  </section>
+</Legal>
+
+<script>
+  // Mail links do nothing on computers without a mail app, so offer a copy button too.
+  document.querySelectorAll<HTMLButtonElement>('[data-copy]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(button.dataset.copy ?? '');
+        button.classList.add('is-copied');
+        window.setTimeout(() => button.classList.remove('is-copied'), 2000);
+      } catch {
+        window.location.href = `mailto:${button.dataset.copy}`;
+      }
+    });
+  });
+</script>
+
+<style>
+  .contact {
+    padding: clamp(24px, 4vw, 36px);
+    border-radius: var(--radius-lg);
+    border: 1px solid rgb(239 147 6 / 0.25);
+    background:
+      radial-gradient(90% 140% at 0% 0%, rgb(239 147 6 / 0.16), transparent 60%),
+      var(--bg-raised);
+  }
+
+  .contact__label {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+
+  .contact .contact__email {
+    display: inline-block;
+    margin-top: 10px;
+    color: var(--text);
+    font-size: clamp(1.25rem, 1rem + 1.2vw, 1.75rem);
+    font-weight: 620;
+    letter-spacing: -0.02em;
+    text-decoration: none;
+    overflow-wrap: anywhere;
+  }
+
+  .contact__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 24px;
+  }
+
+  .contact .btn {
+    text-decoration: none;
+  }
+
+  .contact .btn--primary {
+    color: var(--accent-ink);
+  }
+
+  .contact__note {
+    margin-top: 20px;
+  }
+
+  .copy-done,
+  .is-copied .copy-idle {
+    display: none;
+  }
+
+  .copy-idle,
+  .is-copied .copy-done {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5em;
+  }
+
+</style>

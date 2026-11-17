@@ -1,0 +1,150 @@
+---
+import { Image } from 'astro:assets';
+import icon from '../assets/icon.png';
+import AppStoreBadge from './AppStoreBadge.astro';
+import { SITE } from '../data/site';
+
+const year = new Date().getFullYear();
+---
+
+<footer class="footer" id="policies">
+  <div class="container footer__grid">
+    <div class="footer__brand">
+      <a class="footer__logo" href="/">
+        <Image src={icon} alt="" width={36} height={36} densities={[1, 2, 3]} class="footer__icon" />
+        <span>Re-Hearse</span>
+      </a>
+      <p>Sheet music you can practice with, note by note.</p>
+      <AppStoreBadge height={44} />
+    </div>
+
+    <nav class="footer__nav" aria-label="Footer">
+      <div>
+        <h2 class="footer__h">Product</h2>
+        <ul role="list">
+          <li><a href="/#how-it-works">How it works</a></li>
+          <li><a href="/#try">Try it</a></li>
+          <li><a href="/#features">Features</a></li>
+          <li><a href="/#faq">FAQ</a></li>
+        </ul>
+      </div>
+      <div>
+        <h2 class="footer__h">Help</h2>
+        <ul role="list">
+          <li><a href="/support/">Support</a></li>
+          <li><a href={`mailto:${SITE.email}`}>Contact us</a></li>
+          <li><a href={SITE.appStoreReviewUrl}>Rate the app</a></li>
+        </ul>
+      </div>
+      <div>
+        <h2 class="footer__h">Legal</h2>
+        <ul role="list">
+          <li><a href="/privacy-policy/">Privacy Policy</a></li>
+          <li><a href="/terms-of-service/">Terms of Service</a></li>
+        </ul>
+      </div>
+    </nav>
+  </div>
+
+  <div class="container">
+    <div class="footer__legal">
+      <p>© {year} Re-Hearse. All rights reserved.</p>
+      <p>
+        Apple, the Apple logo and iPhone are trademarks of Apple Inc., registered in the U.S. and other countries and
+        regions. App Store is a service mark of Apple Inc.
+      </p>
+    </div>
+  </div>
+</footer>
+
+<style>
+  .footer {
+    border-top: 1px solid var(--line);
+    padding-block: 72px 40px;
+    background: var(--bg);
+  }
+
+  .footer__grid {
+    display: grid;
+    grid-template-columns: 1.2fr 2fr;
+    gap: 48px;
+  }
+
+  .footer__brand {
+    display: grid;
+    justify-items: start;
+    gap: 16px;
+    align-content: start;
+  }
+
+  .footer__brand p {
+    color: var(--text-2);
+    max-width: 30ch;
+  }
+
+  .footer__logo {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    font-weight: 650;
+    font-size: 1.1875rem;
+    letter-spacing: -0.02em;
+  }
+
+  .footer__icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 9px;
+  }
+
+  .footer__nav {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 32px;
+  }
+
+  .footer__h {
+    margin-bottom: 14px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+
+  .footer__nav ul {
+    display: grid;
+    gap: 10px;
+  }
+
+  .footer__nav a {
+    color: var(--text-2);
+    transition: color 0.2s;
+  }
+
+  .footer__nav a:hover {
+    color: var(--text);
+  }
+
+  .footer__legal {
+    display: grid;
+    gap: 8px;
+    margin-top: 64px;
+    padding-top: 24px;
+    border-top: 1px solid var(--line);
+    font-size: 0.8125rem;
+    color: var(--text-3);
+  }
+
+  @media (max-width: 860px) {
+    .footer__grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 520px) {
+    .footer__nav {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+</style>

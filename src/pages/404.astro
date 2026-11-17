@@ -1,0 +1,38 @@
+---
+import Base from '../layouts/Base.astro';
+---
+
+<Base title="Page not found" description="This page doesn't exist." noindex>
+  <section class="lost container">
+    <p class="eyebrow intro">Error 404</p>
+    <h1 class="h1 intro" style="--i: 1">This page is <em>off the staff.</em></h1>
+    <p class="lost__text intro" style="--i: 2">The link may be old, or the page may have moved.</p>
+    <div class="lost__actions intro" style="--i: 3">
+      <a class="btn btn--primary" href="/">Back to home</a>
+      <a class="btn btn--ghost" href="/support/">Get support</a>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .lost {
+    display: grid;
+    justify-items: center;
+    gap: 22px;
+    padding-block: clamp(96px, 16vw, 200px);
+    text-align: center;
+  }
+
+  .lost__text {
+    color: var(--text-2);
+    font-size: 1.125rem;
+  }
+
+  .lost__actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 10px;
+  }
+</style>

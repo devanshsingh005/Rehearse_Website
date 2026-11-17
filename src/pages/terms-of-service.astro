@@ -1,0 +1,166 @@
+---
+import Legal from '../layouts/Legal.astro';
+import { SITE } from '../data/site';
+
+const toc = [
+  { id: 'section1', label: '1. Acceptance of Terms' },
+  { id: 'section2', label: '2. Eligibility & Accounts' },
+  { id: 'section3', label: '3. Your Content' },
+  { id: 'section4', label: '4. Limited License' },
+  { id: 'section5', label: '5. Prohibited Content' },
+  { id: 'section6', label: '6. Third-Party Services' },
+  { id: 'section7', label: '7. Disclaimers & Liability' },
+  { id: 'section8', label: '8. Modifications & Law' },
+  { id: 'section9', label: '9. General Provisions' },
+];
+---
+
+<Legal
+  title="Terms of Service"
+  description="The terms that apply when you use Re-Hearse."
+  lead="Please read these Terms carefully before uploading any content or using any features."
+  toc={toc}
+>
+  <section id="section1">
+    <h2>1. Introduction & Acceptance of Terms</h2>
+    <p>
+      By accessing or using <span class="nobr">Re-Hearse</span>, you agree to be bound by these Terms of Service. If you do not agree, please stop
+      using the platform immediately.
+    </p>
+    <p>
+      These Terms form a legally binding agreement between you and the platform operator. Please read them carefully
+      before uploading any content or using any features.
+    </p>
+    <div class="callout">
+      <span class="callout-title">Important</span>
+      Continued use of the platform after any updates to these Terms constitutes your acceptance of the revised Terms.
+    </div>
+  </section>
+
+  <section id="section2">
+    <h2>2. Eligibility & Account Responsibilities</h2>
+    <p>
+      You must be at least 13 years of age (or the minimum age of digital consent in your country) to use this platform.
+      By using it, you confirm that you meet this requirement.
+    </p>
+    <p>
+      You are responsible for maintaining the confidentiality of your login credentials and for all activities that occur
+      under your account. Notify us immediately if you suspect unauthorized access.
+    </p>
+    <p>You agree to provide accurate and current information when creating your account and to update it as necessary.</p>
+  </section>
+
+  <section id="section3">
+    <h2>3. Your Content — Ownership & Responsibility</h2>
+    <p>
+      You retain full ownership of all files, data, media, and other content you upload to the platform ("Your Content").
+      We do not claim any ownership rights over it.
+    </p>
+    <div class="callout">
+      <span class="callout-title">Legal Responsibility</span>
+      You are solely responsible for all content you upload. By uploading content, you confirm that you own the rights
+      (including copyright for sheet music) or have obtained all necessary permissions.
+    </div>
+    <p>By uploading content, you confirm that:</p>
+    <ul>
+      <li>Your content does not infringe any third party's copyright, trademark, or privacy rights</li>
+      <li>Your content complies with all applicable laws in your jurisdiction</li>
+      <li>We are not responsible for reviewing the legality or ownership of your uploaded content</li>
+    </ul>
+  </section>
+
+  <section id="section4">
+    <h2>4. Limited License to the Platform</h2>
+    <p>To operate the service, you grant us a limited, non-exclusive, worldwide, royalty-free license to:</p>
+    <ul>
+      <li>Host, store, and back up Your Content on our infrastructure (provided by Supabase)</li>
+      <li>Display Your Content to you and to those you specifically authorize</li>
+      <li>
+        Process and transform Your Content solely as needed to deliver the service (e.g. converting sheet music to
+        playable audio)
+      </li>
+    </ul>
+    <p>This license terminates when you delete Your Content or close your account.</p>
+  </section>
+
+  <section id="section5">
+    <h2>5. Prohibited Content & Moderation</h2>
+    <p>
+      You agree not to upload or transmit content that is unlawful, harmful, infringing, threatening, defamatory, or that
+      contains malware.
+    </p>
+    <p>
+      We reserve the right, but not the obligation, to review, remove, or restrict access to any content that we believe
+      violates these Terms or exposes the platform to legal risk.
+    </p>
+    <p>We may suspend or permanently terminate your account for serious or repeated violations of these Terms.</p>
+  </section>
+
+  <section id="section6">
+    <h2>6. Third-Party Services & Integrations</h2>
+    <p>
+      Re-Hearse integrates with third-party providers for services such as cloud storage (Supabase) and authentication
+      (Apple/Google). These third parties operate under their own terms and privacy policies.
+    </p>
+    <p>
+      We are not responsible for the availability or content of third-party services. Your use of such integrations is at
+      your own risk.
+    </p>
+  </section>
+
+  <section id="section7">
+    <h2>7. Disclaimers & Limitation of Liability</h2>
+    <div class="callout">
+      <span class="callout-title">Disclaimer</span>
+      Re-Hearse is provided "AS IS" and "AS AVAILABLE" basis, without warranties of any kind. Your use of the platform is
+      at your own risk.
+    </div>
+    <div class="callout">
+      <span class="callout-title">Accuracy Notice</span>
+      While we aim to provide accurate musical notation and analysis, the output generated by <span class="nobr">Re-Hearse</span> may not be 100%
+      precise. Actual musical data, interpretation, or notation may differ from the processed results due to limitations
+      in input quality, formatting, or system processing.
+    </div>
+    <p>
+      To the fullest extent permitted by law, the platform operator shall not be liable for any indirect, incidental, or
+      consequential damages resulting from your use of the service.
+    </p>
+    <p>
+      In no event shall our total liability to you exceed the greater of: (a) total fees you have paid us in the past 12
+      months, or (b) USD $50.00.
+    </p>
+    <div class="callout">
+      <span class="callout-title">User Content Liability</span>
+      We are not liable for any harm or loss resulting from content uploaded by you or other users. You assume full legal
+      responsibility for Your Content.
+    </div>
+  </section>
+
+  <section id="section8">
+    <h2>8. Modifications & Governing Law</h2>
+    <p>
+      We reserve the right to modify or discontinue the platform at any time. We may update these Terms periodically and
+      will notify you of material changes.
+    </p>
+    <p>
+      These Terms are governed by the laws of the jurisdiction in which the platform operator is based, without regard to
+      its conflict-of-law provisions.
+    </p>
+  </section>
+
+  <section id="section9">
+    <h2>9. General Provisions</h2>
+    <p>
+      <strong>Entire Agreement:</strong> These Terms and our Privacy Policy constitute the entire agreement between you and
+      <span class="nobr">Re-Hearse</span>.
+    </p>
+    <p>
+      <strong>Severability:</strong> If any provision is found to be unenforceable, the remaining provisions will continue
+      in full force.
+    </p>
+    <p>
+      <strong>Contact:</strong> For questions about these Terms, please contact us at
+      <strong><a href={`mailto:${SITE.email}`}>{SITE.email}</a></strong>.
+    </p>
+  </section>
+</Legal>

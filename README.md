@@ -1,6 +1,6 @@
-# Re-Hearse website
+# Rehearse website
 
-Marketing site for [Re-Hearse](https://apps.apple.com/app/id6761712673), served at [letsrehearse.studio](https://letsrehearse.studio).
+Marketing site for [Rehearse](https://apps.apple.com/app/id6761712673), served at [letsrehearse.studio](https://letsrehearse.studio).
 
 Built with [Astro](https://astro.build). Pages are static HTML. The only JavaScript is the playable piano demo, the mobile menu, page prefetching and the support page's copy button, about 4 KB gzipped in total. Images are resized to AVIF/WebP at build time and fonts are self-hosted.
 

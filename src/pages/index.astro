@@ -41,21 +41,21 @@ const steps = [
     title: 'Scan the page',
     text: 'Point your camera at printed sheet music, or upload a PDF or photo you already have.',
     image: scanCrop,
-    alt: 'The Re-Hearse scan screen: an orange viewfinder with the words "Turn your sheet into music".',
+    alt: 'The Rehearse scan screen: an orange viewfinder with the words "Turn your sheet into music".',
     tone: 'dark',
   },
   {
     title: 'Read every note',
     text: 'Each note is named, like C4 or G4. Right-hand notes show in red and left-hand notes in blue.',
     image: staffCrop,
-    alt: 'A close-up of a score in Re-Hearse with A4 and G4 labeled in red under the treble staff and F3 and E3 in blue under the bass staff.',
+    alt: 'A close-up of a score in Rehearse with A4 and G4 labeled in red under the treble staff and F3 and E3 in blue under the bass staff.',
     tone: 'paper',
   },
   {
     title: 'Play along',
     text: 'The guide moves note by note and lights up the keys to press next, so you always know where you are.',
     image: keysCrop,
-    alt: 'The Re-Hearse keyboard with F3 lit in blue for the left hand and A4 lit in red for the right hand.',
+    alt: 'The Rehearse keyboard with F3 lit in blue for the left hand and A4 lit in red for the right hand.',
     tone: 'paper',
   },
 ] as const;
@@ -77,8 +77,8 @@ const audience = [
 ];
 
 const faqs = [
-  { q: 'Is Re-Hearse free?', a: 'Yes. Re-Hearse is free to download on the App Store.' },
-  { q: 'Which devices does it run on?', a: `Re-Hearse is an iPhone app and needs iOS ${SITE.minimumIOS} or later.` },
+  { q: 'Is Rehearse free?', a: 'Yes. Rehearse is free to download on the App Store.' },
+  { q: 'Which devices does it run on?', a: `Rehearse is an iPhone app and needs iOS ${SITE.minimumIOS} or later.` },
   {
     q: 'What sheet music can I use?',
     a: 'Printed pages you photograph with your camera, or images and PDFs you upload. You can also start with the songs in the built-in library.',
@@ -123,7 +123,7 @@ const jsonLd = {
       </p>
       <h1 class="h1 hero__title intro" style="--i: 1">Turn your sheet <br class="hero__br" />into <em>music.</em></h1>
       <p class="hero__lead intro" style="--i: 2">
-        Scan a page of sheet music and practice it note by note. <span class="nobr">Re-Hearse</span> names every note, shows which hand plays
+        Scan a page of sheet music and practice it note by note. Rehearse names every note, shows which hand plays
         it, and lights up the keys you need next.
       </p>
       <div class="hero__cta intro" style="--i: 3">
@@ -139,7 +139,7 @@ const jsonLd = {
           <Phone
             src={playerShot}
             orientation="landscape"
-            alt="Re-Hearse playing Twinkle Twinkle Little Star: a score with every note labeled, an orange playhead, and a full piano keyboard with F3 and A4 highlighted. The top bar says Play F3, A4."
+            alt="Rehearse playing Twinkle Twinkle Little Star: a score with every note labeled, an orange playhead, and a full piano keyboard with F3 and A4 highlighted. The top bar says Play F3, A4."
             widths={[640, 960, 1280, 1680, 2200]}
             sizes="(min-width: 1240px) 1120px, (min-width: 641px) 92vw, 118vw"
             priority
@@ -198,7 +198,7 @@ const jsonLd = {
       <header class="section-head section-head--center reveal">
         <p class="eyebrow">Try it</p>
         <h2 class="h2">Play your first line <em>right now.</em></h2>
-        <p class="lead">This is what practice feels like in <span class="nobr">Re-Hearse</span>. Press the key that lights up and the music moves with you.</p>
+        <p class="lead">This is what practice feels like in Rehearse. Press the key that lights up and the music moves with you.</p>
       </header>
       <div class="reveal">
         <PianoDemo />
@@ -224,7 +224,7 @@ const jsonLd = {
       <figure class="trio__item reveal">
         <Phone
           src={homeShot}
-          alt="The Re-Hearse Home screen with a Scan to Play button, an Upload Music Sheet link and a row of playlists."
+          alt="The Rehearse Home screen with a Scan to Play button, an Upload Music Sheet link and a row of playlists."
           widths={[330, 500, 680, 860]}
           sizes="(min-width: 1000px) 300px, 68vw"
         />
@@ -236,7 +236,7 @@ const jsonLd = {
       <figure class="trio__item trio__item--center reveal">
         <Phone
           src={libraryShot}
-          alt="The Re-Hearse Library: songs like Scarborough Fair, London Bridge and Minuet in G, tagged with level, difficulty and hand."
+          alt="The Rehearse Library: songs like Scarborough Fair, London Bridge and Minuet in G, tagged with level, difficulty and hand."
           widths={[330, 500, 680, 860]}
           sizes="(min-width: 1000px) 330px, 68vw"
         />
@@ -248,7 +248,7 @@ const jsonLd = {
       <figure class="trio__item reveal">
         <Phone
           src={searchShot}
-          alt="The Re-Hearse Search screen listing Scan Sheet Music, Library, Playlists, Practice Lessons, Notifications and Settings."
+          alt="The Rehearse Search screen listing Scan Sheet Music, Library, Playlists, Practice Lessons, Notifications and Settings."
           widths={[330, 500, 680, 860]}
           sizes="(min-width: 1000px) 300px, 68vw"
         />
@@ -327,14 +327,14 @@ const jsonLd = {
         <div class="cta__copy">
           <Image src={icon} alt="" width={88} height={88} densities={[1, 2, 3]} class="cta__icon" />
           <h2 class="h2"><span class="nobr">Scan it.</span> <span class="nobr">Follow it.</span> <em class="nobr">Play it.</em></h2>
-          <p>Start with the piece already on your music stand. <span class="nobr">Re-Hearse</span> is free on the App Store.</p>
+          <p>Start with the piece already on your music stand. Rehearse is free on the App Store.</p>
           <div class="cta__actions">
             <AppStoreBadge height={52} />
             <a class="text-link" href={SITE.appStoreReviewUrl}>Enjoying it? Rate the app <ArrowRight aria-hidden="true" /></a>
           </div>
         </div>
         <div class="cta__qr">
-          <div class="cta__qr-code" role="img" aria-label="QR code that opens Re-Hearse on the App Store" set:html={qrSvg} />
+          <div class="cta__qr-code" role="img" aria-label="QR code that opens Rehearse on the App Store" set:html={qrSvg} />
           <p>Scan with your iPhone camera</p>
         </div>
       </div>

@@ -32,6 +32,6 @@ To update screenshots, replace the files in `src/assets/screens/` and keep the s
 
 ## Deploying
 
-`.github/workflows/deploy.yml` builds and publishes the site to GitHub Pages on every push to `main`.
+`.github/workflows/deploy.yml` builds the site on every push and publishes it to GitHub Pages when the push is to `main`.
 
-One-time setup: in the repository on GitHub, open **Settings → Pages** and set **Build and deployment → Source** to **GitHub Actions**.
+One-time setup, which only the repository owner can do: open **Settings → Pages** and set **Build and deployment → Source** to **GitHub Actions**.

@@ -1,10 +1,10 @@
-# Builds the Astro site and publishes it to GitHub Pages on every push to main.
-# One-time setup: repository Settings → Pages → Build and deployment → Source: "GitHub Actions".
+# Builds the site on every push. Pushes to main are also published to GitHub Pages.
+# One-time setup (repository owner only): Settings → Pages → Build and deployment →
+# Source: "GitHub Actions".
 name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -13,7 +13,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -26,6 +26,8 @@ jobs:
         uses: withastro/action@v6
 
   deploy:
+    # Only main is published. Other branches just check that the site builds.
+    if: github.ref == 'refs/heads/main'
     needs: build
     runs-on: ubuntu-latest
     environment:

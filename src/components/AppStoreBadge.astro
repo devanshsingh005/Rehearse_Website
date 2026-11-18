@@ -1,0 +1,39 @@
+---
+/** Apple's official "Download on the App Store" badge, served locally. */
+import { SITE } from '../data/site';
+
+interface Props {
+  height?: number;
+  class?: string;
+}
+
+const { height = 52, class: className } = Astro.props;
+// The badge artwork is 119.66 × 40.
+const width = Math.round((height * 119.66407) / 40);
+---
+
+<a class:list={['appstore', className]} href={SITE.appStoreUrl}>
+  <img src="/app-store-badge.svg" width={width} height={height} alt="Download on the App Store" />
+</a>
+
+<style>
+  .appstore {
+    display: inline-block;
+    flex: none;
+    border-radius: 9px;
+    transition: transform 0.2s var(--ease-out), opacity 0.2s;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .appstore:hover {
+    opacity: 0.88;
+  }
+
+  .appstore:active {
+    transform: scale(0.97);
+  }
+
+  .appstore img {
+    display: block;
+  }
+</style>

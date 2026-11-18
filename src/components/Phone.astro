@@ -1,0 +1,125 @@
+---
+/**
+ * iPhone frame drawn in CSS around an optimized screenshot.
+ * Sizes scale with the frame's width (container query units), so the same
+ * component works from a small card to the hero.
+ */
+import { Picture } from 'astro:assets';
+import type { ImageMetadata } from 'astro';
+
+interface Props {
+  src: ImageMetadata;
+  alt: string;
+  orientation?: 'portrait' | 'landscape';
+  /** Rendered widths to generate, in px. */
+  widths: number[];
+  sizes: string;
+  /** Load immediately: use only for the image in the first screen. */
+  priority?: boolean;
+  class?: string;
+}
+
+const { src, alt, orientation = 'portrait', widths, sizes, priority = false, class: className } = Astro.props;
+---
+
+<div class:list={['phone', `phone--${orientation}`, className]}>
+  <div class="phone__body">
+    <div class="phone__screen">
+      <Picture
+        src={src}
+        alt={alt}
+        widths={widths}
+        sizes={sizes}
+        formats={['avif']}
+        fallbackFormat="webp"
+        quality={72}
+        priority={priority}
+      />
+      {orientation === 'portrait' && <span class="phone__island" aria-hidden="true" />}
+    </div>
+  </div>
+</div>
+
+<style>
+  .phone {
+    container-type: inline-size;
+    width: 100%;
+  }
+
+  .phone__body {
+    --bezel: 2.6cqw;
+    --radius: 16.5cqw;
+    position: relative;
+    padding: var(--bezel);
+    border-radius: var(--radius);
+    background: #070605;
+    box-shadow:
+      0 0 0 1.5px #57514b,
+      0 0 0 2.5px #1b1917,
+      inset 0 0 0 1px rgb(255 255 255 / 0.06),
+      0 50px 100px -30px rgb(0 0 0 / 0.75),
+      0 30px 60px -40px rgb(0 0 0 / 0.6);
+  }
+
+  /* Side buttons (portrait only) */
+  .phone--portrait .phone__body::before,
+  .phone--portrait .phone__body::after {
+    content: '';
+    position: absolute;
+    width: 0.9cqw;
+    border-radius: 2px;
+    background: linear-gradient(90deg, #2d2a27, #5d5752);
+  }
+
+  .phone--portrait .phone__body::before {
+    left: -1.6cqw;
+    top: 24%;
+    height: 14%;
+    box-shadow: 0 -12cqw 0 #3b3734;
+  }
+
+  .phone--portrait .phone__body::after {
+    right: -1.6cqw;
+    top: 28%;
+    height: 18%;
+  }
+
+  .phone--landscape .phone__body {
+    --bezel: 1.2cqw;
+    --radius: 7.6cqw;
+  }
+
+  .phone__screen {
+    container-type: inline-size;
+    position: relative;
+    overflow: hidden;
+    border-radius: calc(var(--radius) - var(--bezel));
+    background: #000;
+    /* Keeps the rounded clip crisp on Safari while the frame is transformed. */
+    isolation: isolate;
+  }
+
+  .phone__screen :global(img) {
+    width: 100%;
+    height: auto;
+  }
+
+  .phone--portrait .phone__screen {
+    aspect-ratio: 1260 / 2736;
+  }
+
+  .phone--landscape .phone__screen {
+    aspect-ratio: 2736 / 1260;
+  }
+
+  .phone__island {
+    position: absolute;
+    left: 50%;
+    top: 4.4cqw;
+    width: 30cqw;
+    height: 8.8cqw;
+    translate: -50% 0;
+    border-radius: 999px;
+    background: #000;
+  }
+</style>

@@ -1,0 +1,1024 @@
+---
+import { Image, Picture } from 'astro:assets';
+import QRCode from 'qrcode';
+import ArrowDown from '@lucide/astro/icons/arrow-down';
+import ArrowRight from '@lucide/astro/icons/arrow-right';
+import Mic from '@lucide/astro/icons/mic';
+import Gauge from '@lucide/astro/icons/gauge';
+import BookOpen from '@lucide/astro/icons/book-open';
+import GraduationCap from '@lucide/astro/icons/graduation-cap';
+import ListMusic from '@lucide/astro/icons/list-music';
+import FileMusic from '@lucide/astro/icons/file-music';
+import School from '@lucide/astro/icons/school';
+import Sprout from '@lucide/astro/icons/sprout';
+import KeyboardMusic from '@lucide/astro/icons/keyboard-music';
+import Presentation from '@lucide/astro/icons/presentation';
+
+import Base from '../layouts/Base.astro';
+import Phone from '../components/Phone.astro';
+import PianoDemo from '../components/PianoDemo.astro';
+import AppStoreBadge from '../components/AppStoreBadge.astro';
+import { SITE } from '../data/site';
+
+import icon from '../assets/icon.png';
+import playerShot from '../assets/screens/player.png';
+import homeShot from '../assets/screens/home.png';
+import libraryShot from '../assets/screens/library.png';
+import searchShot from '../assets/screens/search.png';
+import scanCrop from '../assets/crops/scan.png';
+import staffCrop from '../assets/crops/staff.png';
+import keysCrop from '../assets/crops/keys.png';
+
+const qrSvg = await QRCode.toString(SITE.appStoreUrl, {
+  type: 'svg',
+  margin: 0,
+  errorCorrectionLevel: 'M',
+  color: { dark: '#110f0d', light: '#0000' },
+});
+
+const steps = [
+  {
+    title: 'Scan the page',
+    text: 'Point your camera at printed sheet music, or upload a PDF or photo you already have.',
+    image: scanCrop,
+    alt: 'The Rehearse scan screen: an orange viewfinder with the words "Turn your sheet into music".',
+    tone: 'dark',
+  },
+  {
+    title: 'Read every note',
+    text: 'Each note is named, like C4 or G4. Right-hand notes show in red and left-hand notes in blue.',
+    image: staffCrop,
+    alt: 'A close-up of a score in Rehearse with A4 and G4 labeled in red under the treble staff and F3 and E3 in blue under the bass staff.',
+    tone: 'paper',
+  },
+  {
+    title: 'Play along',
+    text: 'The guide moves note by note and lights up the keys to press next, so you always know where you are.',
+    image: keysCrop,
+    alt: 'The Rehearse keyboard with F3 lit in blue for the left hand and A4 lit in red for the right hand.',
+    tone: 'paper',
+  },
+] as const;
+
+const extras = [
+  { icon: Mic, title: 'Chord feedback', text: 'Play a chord and get feedback, so you can check your accuracy and hear how harmony works.' },
+  { icon: Gauge, title: 'Your own pace', text: 'Slow down, repeat the hard bars, and build accuracy over time.' },
+  { icon: BookOpen, title: 'Theory as you go', text: 'Learn notes, chords and reading basics while you practice real pieces.' },
+  { icon: GraduationCap, title: 'Interactive lessons', text: 'Guided lessons that walk you through the fundamentals step by step.' },
+  { icon: ListMusic, title: 'Playlists', text: 'Group pieces into collections and keep your practice organized.' },
+  { icon: FileMusic, title: 'Your music, not ours', text: 'Bring the songs, exercises and assignments you already play.' },
+];
+
+const audience = [
+  { icon: School, title: 'Music students', text: 'Practice between lessons and arrive prepared.' },
+  { icon: Sprout, title: 'Beginners', text: 'Learn to read sheet music one note at a time.' },
+  { icon: KeyboardMusic, title: 'Returning players', text: 'Pick your instrument back up without starting over.' },
+  { icon: Presentation, title: 'Teachers', text: 'Give students a clear way to practice on their own.' },
+];
+
+const faqs = [
+  { q: 'Is Rehearse free?', a: 'Yes. Rehearse is free to download on the App Store.' },
+  { q: 'Which devices does it run on?', a: `Rehearse is an iPhone app and needs iOS ${SITE.minimumIOS} or later.` },
+  {
+    q: 'What sheet music can I use?',
+    a: 'Printed pages you photograph with your camera, or images and PDFs you upload. You can also start with the songs in the built-in library.',
+  },
+  {
+    q: 'How accurate is the scanning?',
+    a: 'Clear, flat, well-lit pages give the best results. Automatic recognition can occasionally differ from the original, so check tricky passages against the page.',
+  },
+  {
+    q: 'What happens to the sheets I upload?',
+    html: `They are stored with encryption so you can practice them, and we never sell your data. You can delete files at any time, or delete your whole account in Settings. The <a href="/privacy-policy/">Privacy Policy</a> has the details.`,
+  },
+  {
+    q: 'How do I get help?',
+    html: `Email <a href="mailto:${SITE.email}">${SITE.email}</a> or visit the <a href="/support/">Support page</a>. We usually reply within 2 to 3 business days.`,
+  },
+];
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'MobileApplication',
+  name: SITE.name,
+  description: SITE.description,
+  url: SITE.url,
+  installUrl: SITE.appStoreUrl,
+  operatingSystem: `iOS ${SITE.minimumIOS}.0 or later`,
+  applicationCategory: 'EducationalApplication',
+  offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+};
+---
+
+<Base>
+  <script type="application/ld+json" slot="head" set:html={JSON.stringify(jsonLd)} />
+
+  <!-- ============ Hero ============ -->
+  <section class="hero">
+    <div class="hero__staff" aria-hidden="true"></div>
+    <div class="container hero__inner">
+      <p class="pill intro" style="--i: 0">
+        <Image src={icon} alt="" width={22} height={22} densities={[1, 2, 3]} loading="eager" class="pill__icon" />
+        Free on the App Store
+      </p>
+      <h1 class="h1 hero__title intro" style="--i: 1">Turn your sheet <br class="hero__br" />into <em>music.</em></h1>
+      <p class="hero__lead intro" style="--i: 2">
+        Scan a page of sheet music and practice it note by note. Rehearse names every note, shows which hand plays
+        it, and lights up the keys you need next.
+      </p>
+      <div class="hero__cta intro" style="--i: 3">
+        <AppStoreBadge height={52} />
+        <a class="btn btn--ghost" href="#try">Try it in your browser <ArrowDown aria-hidden="true" /></a>
+      </div>
+      <p class="hero__meta intro" style="--i: 4">Free · iPhone · iOS {SITE.minimumIOS} or later</p>
+    </div>
+
+    <figure class="container hero__figure">
+      <div class="hero__device-in intro" style="--i: 3">
+        <div class="hero__device">
+          <Phone
+            src={playerShot}
+            orientation="landscape"
+            alt="Rehearse playing Twinkle Twinkle Little Star: a score with every note labeled, an orange playhead, and a full piano keyboard with F3 and A4 highlighted. The top bar says Play F3, A4."
+            widths={[640, 960, 1280, 1680, 2200]}
+            sizes="(min-width: 1240px) 1120px, (min-width: 641px) 92vw, 118vw"
+            priority
+          />
+        </div>
+      </div>
+      <figcaption class="legend intro" style="--i: 5">
+        <span><i class="dot dot--rh" aria-hidden="true"></i>Right hand</span>
+        <span><i class="dot dot--lh" aria-hidden="true"></i>Left hand</span>
+        <span><i class="bar" aria-hidden="true"></i>Where you are</span>
+        <span><b class="tag" aria-hidden="true">C4</b>Every note named</span>
+      </figcaption>
+    </figure>
+  </section>
+
+  <!-- ============ How it works ============ -->
+  <section class="section" id="how-it-works">
+    <div class="container">
+      <header class="section-head reveal">
+        <p class="eyebrow">How it works</p>
+        <h2 class="h2">From paper to practice <em>in three steps.</em></h2>
+      </header>
+
+      <ol class="steps" role="list">
+        {
+          steps.map((step, i) => (
+            <li class="step reveal">
+              <div class:list={['step__visual', `step__visual--${step.tone}`]}>
+                <Picture
+                  src={step.image}
+                  alt={step.alt}
+                  widths={[400, 600, 800].filter((w) => w < step.image.width).concat(step.image.width)}
+                  sizes="(min-width: 1000px) 370px, (min-width: 700px) 45vw, 90vw"
+                  formats={['avif']}
+                  fallbackFormat="webp"
+                  quality={78}
+                />
+              </div>
+              <div class="step__body">
+                <span class="step__num" aria-hidden="true">
+                  {i + 1}
+                </span>
+                <h3 class="h3">{step.title}</h3>
+                <p>{step.text}</p>
+              </div>
+            </li>
+          ))
+        }
+      </ol>
+    </div>
+  </section>
+
+  <!-- ============ Try it ============ -->
+  <section class="section try" id="try">
+    <div class="container">
+      <header class="section-head section-head--center reveal">
+        <p class="eyebrow">Try it</p>
+        <h2 class="h2">Play your first line <em>right now.</em></h2>
+        <p class="lead">This is what practice feels like in Rehearse. Press the key that lights up and the music moves with you.</p>
+      </header>
+      <div class="reveal">
+        <PianoDemo />
+      </div>
+      <p class="try__hint">
+        Turn your sound on. <span class="try__hint-kbd">On a computer, you can also use the <kbd>A</kbd> to <kbd>K</kbd> keys.</span>
+      </p>
+    </div>
+  </section>
+
+  <!-- ============ Inside the app ============ -->
+  <section class="section" id="features">
+    <span id="showcase-area" aria-hidden="true"></span>
+    <div class="container">
+      <header class="section-head section-head--center reveal">
+        <p class="eyebrow">Inside the app</p>
+        <h2 class="h2">Everything you need <em>to keep practicing.</em></h2>
+        <p class="lead">Your scans, a library of songs to learn, and quick search, all a tap away.</p>
+      </header>
+    </div>
+
+    <div class="trio">
+      <figure class="trio__item reveal">
+        <Phone
+          src={homeShot}
+          alt="The Rehearse Home screen with a Scan to Play button, an Upload Music Sheet link and a row of playlists."
+          widths={[330, 500, 680, 860]}
+          sizes="(min-width: 1000px) 300px, 68vw"
+        />
+        <figcaption>
+          <strong>Home</strong>
+          Scan or upload a sheet, then jump back into your playlists and recent uploads.
+        </figcaption>
+      </figure>
+      <figure class="trio__item trio__item--center reveal">
+        <Phone
+          src={libraryShot}
+          alt="The Rehearse Library: songs like Scarborough Fair, London Bridge and Minuet in G, tagged with level, difficulty and hand."
+          widths={[330, 500, 680, 860]}
+          sizes="(min-width: 1000px) 330px, 68vw"
+        />
+        <figcaption>
+          <strong>Library</strong>
+          Built-in songs tagged by level, difficulty and hand, from London Bridge to Bach's Minuet in G.
+        </figcaption>
+      </figure>
+      <figure class="trio__item reveal">
+        <Phone
+          src={searchShot}
+          alt="The Rehearse Search screen listing Scan Sheet Music, Library, Playlists, Practice Lessons, Notifications and Settings."
+          widths={[330, 500, 680, 860]}
+          sizes="(min-width: 1000px) 300px, 68vw"
+        />
+        <figcaption>
+          <strong>Search</strong>
+          Find uploads, songs, playlists and lessons from one place.
+        </figcaption>
+      </figure>
+    </div>
+
+    <div class="container">
+      <ul class="extras" role="list">
+        {
+          extras.map(({ icon: Icon, title, text }) => (
+            <li class="extra reveal">
+              <span class="extra__icon" aria-hidden="true">
+                <Icon size={22} stroke-width={1.75} />
+              </span>
+              <h3 class="h3">{title}</h3>
+              <p>{text}</p>
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============ Who it's for ============ -->
+  <section class="section audience">
+    <div class="container">
+      <header class="section-head reveal">
+        <p class="eyebrow">Who it's for</p>
+        <h2 class="h2">For anyone with <em>a page to learn.</em></h2>
+      </header>
+      <ul class="audience__grid reveal" role="list">
+        {
+          audience.map(({ icon: Icon, title, text }) => (
+            <li>
+              <Icon size={26} stroke-width={1.6} aria-hidden="true" class="audience__icon" />
+              <h3 class="h3">{title}</h3>
+              <p>{text}</p>
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============ FAQ ============ -->
+  <section class="section" id="faq">
+    <div class="container faq">
+      <header class="section-head reveal">
+        <p class="eyebrow">FAQ</p>
+        <h2 class="h2">Questions, <em>answered.</em></h2>
+      </header>
+      <div class="faq__list reveal">
+        {
+          faqs.map((item) => (
+            <details name="faq">
+              <summary>
+                {item.q}
+                <span class="faq__chev" aria-hidden="true" />
+              </summary>
+              {'html' in item ? <p set:html={item.html} /> : <p>{item.a}</p>}
+            </details>
+          ))
+        }
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ Download ============ -->
+  <section class="cta" id="download">
+    <div class="container">
+      <div class="cta__card reveal">
+        <div class="cta__copy">
+          <Image src={icon} alt="" width={88} height={88} densities={[1, 2, 3]} class="cta__icon" />
+          <h2 class="h2"><span class="nobr">Scan it.</span> <span class="nobr">Follow it.</span> <em class="nobr">Play it.</em></h2>
+          <p>Start with the piece already on your music stand. Rehearse is free on the App Store.</p>
+          <div class="cta__actions">
+            <AppStoreBadge height={52} />
+            <a class="text-link" href={SITE.appStoreReviewUrl}>Enjoying it? Rate the app <ArrowRight aria-hidden="true" /></a>
+          </div>
+        </div>
+        <div class="cta__qr">
+          <div class="cta__qr-code" role="img" aria-label="QR code that opens Rehearse on the App Store" set:html={qrSvg} />
+          <p>Scan with your iPhone camera</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</Base>
+
+<style>
+  /* ---------- Hero ---------- */
+  .hero {
+    position: relative;
+    margin-top: calc(-1 * var(--nav-h));
+    padding-top: calc(var(--nav-h) + clamp(48px, 8vw, 96px));
+    overflow-x: clip;
+    background:
+      radial-gradient(60% 46% at 50% 0%, rgb(239 147 6 / 0.2), transparent 72%),
+      radial-gradient(42% 30% at 50% 78%, rgb(239 147 6 / 0.13), transparent 72%);
+  }
+
+  /* A faint music staff behind the headline */
+  .hero__staff {
+    position: absolute;
+    inset: calc(var(--nav-h) + clamp(92px, 12vw, 150px)) 0 auto;
+    height: 113px;
+    background: repeating-linear-gradient(to bottom, rgb(255 236 214 / 0.07) 0 1px, transparent 1px 28px);
+    mask-image: linear-gradient(90deg, transparent, #000 25%, #000 75%, transparent);
+    pointer-events: none;
+  }
+
+  .hero__inner {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    padding: 5px 14px 5px 5px;
+    border-radius: 999px;
+    border: 1px solid var(--line-strong);
+    background: rgb(255 255 255 / 0.04);
+    font-size: 0.875rem;
+    font-weight: 550;
+    color: var(--text-2);
+  }
+
+  .pill__icon {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+  }
+
+  .hero__title {
+    margin-top: 28px;
+  }
+
+  .hero__lead {
+    max-width: 600px;
+    margin-top: 26px;
+    font-size: clamp(1.0625rem, 0.98rem + 0.4vw, 1.25rem);
+    color: var(--text-2);
+  }
+
+  .hero__cta {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 12px;
+    margin-top: 36px;
+  }
+
+  .hero__meta {
+    margin-top: 18px;
+    font-size: 0.875rem;
+    color: var(--text-3);
+  }
+
+  .hero__figure {
+    position: relative;
+    margin-top: clamp(56px, 8vw, 88px);
+    padding-bottom: clamp(24px, 4vw, 40px);
+  }
+
+  .hero__device {
+    max-width: 1120px;
+    margin-inline: auto;
+    transform-origin: 50% 0%;
+  }
+
+  /* The device leans back and straightens up as you scroll. */
+  @media (prefers-reduced-motion: no-preference) {
+    @supports (animation-timeline: view()) {
+      .hero__device {
+        animation: device-rise linear both;
+        animation-timeline: view();
+        animation-range: cover 0% cover 42%;
+      }
+    }
+  }
+
+  @keyframes device-rise {
+    from {
+      transform: perspective(1800px) rotateX(18deg) scale(0.92);
+    }
+  }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px 26px;
+    margin-top: 32px;
+    font-size: 0.9375rem;
+    color: var(--text-2);
+  }
+
+  .legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+  }
+
+  .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+  }
+
+  .dot--rh {
+    background: var(--rh);
+    box-shadow: 0 0 12px rgb(255 59 48 / 0.6);
+  }
+
+  .dot--lh {
+    background: var(--lh);
+    box-shadow: 0 0 12px rgb(10 132 255 / 0.6);
+  }
+
+  .bar {
+    width: 3px;
+    height: 16px;
+    border-radius: 2px;
+    background: var(--accent);
+    box-shadow: 0 0 10px rgb(239 147 6 / 0.7);
+  }
+
+  .tag {
+    padding: 1px 6px;
+    border-radius: 5px;
+    background: rgb(255 59 48 / 0.16);
+    color: #ff6b61;
+    font-size: 0.75rem;
+    font-weight: 750;
+  }
+
+  @media (max-width: 640px) {
+    .hero__br {
+      display: none;
+    }
+
+    /* Let the landscape device run a little wider than the screen. */
+    .hero__device {
+      width: 128%;
+      margin-left: -14%;
+    }
+
+    .legend {
+      gap: 10px 18px;
+      font-size: 0.875rem;
+    }
+  }
+
+  /* ---------- Steps ---------- */
+  .steps {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: clamp(16px, 2vw, 24px);
+  }
+
+  .step {
+    display: flex;
+    flex-direction: column;
+    border-radius: var(--radius-lg);
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    overflow: hidden;
+  }
+
+  .step__visual {
+    position: relative;
+    aspect-ratio: 4 / 3;
+    overflow: hidden;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .step__visual :global(picture) {
+    position: absolute;
+    inset: 0;
+  }
+
+  .step__visual--dark {
+    background: #1a1714;
+  }
+
+  .step__visual--paper {
+    background: #f6f5f3;
+  }
+
+  .step__visual :global(img) {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .step__visual--dark :global(img) {
+    object-fit: contain;
+  }
+
+  .step__body {
+    position: relative;
+    padding: 26px 28px 30px;
+  }
+
+  .step__num {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    margin-bottom: 16px;
+    border-radius: 50%;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: 0.9375rem;
+    font-weight: 700;
+  }
+
+  .step__body p {
+    margin-top: 8px;
+    color: var(--text-2);
+  }
+
+  @media (max-width: 999px) {
+    .steps {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .step:last-child {
+      grid-column: 1 / -1;
+      flex-direction: row;
+    }
+
+    .step:last-child .step__visual {
+      flex: 1.1;
+      border-bottom: 0;
+      border-right: 1px solid var(--line);
+    }
+
+    .step:last-child .step__body {
+      flex: 1;
+      align-self: center;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .steps {
+      grid-template-columns: 1fr;
+    }
+
+    .step:last-child {
+      flex-direction: column;
+    }
+
+    .step:last-child .step__visual {
+      border-right: 0;
+      border-bottom: 1px solid var(--line);
+    }
+  }
+
+  /* ---------- Try it ---------- */
+  .try {
+    background:
+      radial-gradient(50% 40% at 50% 60%, rgb(239 147 6 / 0.1), transparent 75%),
+      linear-gradient(var(--bg), var(--bg-raised) 50%, var(--bg));
+  }
+
+  .try__hint {
+    margin-top: 22px;
+    text-align: center;
+    font-size: 0.9375rem;
+    color: var(--text-3);
+  }
+
+  .try__hint kbd {
+    display: inline-block;
+    min-width: 1.8em;
+    padding: 0 6px;
+    border-radius: 6px;
+    border: 1px solid var(--line-strong);
+    background: rgb(255 255 255 / 0.04);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    text-align: center;
+    color: var(--text-2);
+  }
+
+  @media not ((hover: hover) and (pointer: fine)) {
+    .try__hint-kbd {
+      display: none;
+    }
+  }
+
+  /* ---------- Trio ---------- */
+  .trio {
+    display: grid;
+    grid-template-columns: 300px 330px 300px;
+    justify-content: center;
+    align-items: start;
+    gap: clamp(28px, 4vw, 64px);
+    padding-inline: var(--gutter);
+  }
+
+  .trio__item {
+    margin: 0;
+  }
+
+  .trio__item--center {
+    margin-top: -36px;
+  }
+
+  .trio figcaption {
+    margin-top: 28px;
+    padding-inline: 6px;
+    text-align: center;
+    color: var(--text-2);
+    font-size: 0.9375rem;
+  }
+
+  .trio figcaption strong {
+    display: block;
+    margin-bottom: 4px;
+    color: var(--text);
+    font-size: 1.125rem;
+    font-weight: 620;
+    letter-spacing: -0.015em;
+  }
+
+  #showcase-area {
+    position: absolute;
+    top: 0;
+  }
+
+  /* Phones become a swipeable row on small screens. */
+  @media (max-width: 999px) {
+    .trio {
+      grid-template-columns: none;
+      grid-auto-flow: column;
+      grid-auto-columns: min(68vw, 300px);
+      justify-content: start;
+      gap: 20px;
+      padding: 40px var(--gutter) 8px;
+      overflow-x: auto;
+      overscroll-behavior-x: contain;
+      scroll-snap-type: x mandatory;
+      scroll-padding-inline: var(--gutter);
+      scrollbar-width: none;
+    }
+
+    .trio::-webkit-scrollbar {
+      display: none;
+    }
+
+    .trio__item {
+      scroll-snap-align: center;
+    }
+
+    .trio__item--center {
+      margin-top: 0;
+    }
+  }
+
+  /* ---------- Extras ---------- */
+  .extras {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: clamp(14px, 2vw, 20px);
+    margin-top: clamp(72px, 10vw, 128px);
+  }
+
+  .extra {
+    padding: 28px;
+    border-radius: var(--radius-lg);
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+  }
+
+  .extra__icon {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    margin-bottom: 20px;
+    border-radius: 13px;
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+
+  .extra p {
+    margin-top: 8px;
+    color: var(--text-2);
+  }
+
+  @media (max-width: 999px) {
+    .extras {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+
+  @media (max-width: 600px) {
+    .extras {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  /* ---------- Audience ---------- */
+  .audience {
+    padding-top: 0;
+  }
+
+  .audience__grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    border-radius: var(--radius-xl);
+    border: 1px solid var(--line);
+    background: linear-gradient(160deg, rgb(239 147 6 / 0.08), transparent 45%), var(--bg-raised);
+  }
+
+  .audience__grid li {
+    padding: 34px 30px 36px;
+  }
+
+  .audience__grid li + li {
+    border-left: 1px solid var(--line);
+  }
+
+  .audience__grid :global(.audience__icon) {
+    margin-bottom: 22px;
+    color: var(--accent);
+  }
+
+  .audience__grid p {
+    margin-top: 8px;
+    color: var(--text-2);
+  }
+
+  @media (max-width: 999px) {
+    .audience__grid {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .audience__grid li:nth-child(3) {
+      border-left: 0;
+    }
+
+    .audience__grid li:nth-child(n + 3) {
+      border-top: 1px solid var(--line);
+    }
+  }
+
+  @media (max-width: 560px) {
+    .audience__grid {
+      grid-template-columns: 1fr;
+    }
+
+    .audience__grid li + li {
+      border-left: 0;
+      border-top: 1px solid var(--line);
+    }
+  }
+
+  /* ---------- FAQ ---------- */
+  .faq {
+    display: grid;
+    grid-template-columns: 0.8fr 1.2fr;
+    gap: clamp(32px, 6vw, 96px);
+    align-items: start;
+  }
+
+  .faq .section-head {
+    position: sticky;
+    top: calc(var(--nav-h) + 32px);
+  }
+
+  .faq__list details {
+    border-bottom: 1px solid var(--line);
+  }
+
+  .faq__list details:first-child {
+    border-top: 1px solid var(--line);
+  }
+
+  .faq__list summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 24px 4px;
+    font-size: 1.1875rem;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    list-style: none;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .faq__list summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .faq__chev {
+    position: relative;
+    flex: none;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: rgb(255 255 255 / 0.05);
+    transition:
+      transform 0.3s var(--ease-out),
+      background-color 0.2s;
+  }
+
+  .faq__chev::before,
+  .faq__chev::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 11px;
+    height: 1.75px;
+    border-radius: 2px;
+    background: var(--text-2);
+    translate: -50% -50%;
+  }
+
+  .faq__chev::after {
+    rotate: 90deg;
+    transition: rotate 0.3s var(--ease-out);
+  }
+
+  details[open] .faq__chev {
+    background: var(--accent-soft);
+  }
+
+  details[open] .faq__chev::after {
+    rotate: 0deg;
+  }
+
+  .faq__list p {
+    padding: 0 48px 26px 4px;
+    color: var(--text-2);
+  }
+
+  .faq__list :global(a) {
+    color: var(--accent);
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    @supports (interpolate-size: allow-keywords) {
+      .faq__list {
+        interpolate-size: allow-keywords;
+      }
+
+      .faq__list details::details-content {
+        block-size: 0;
+        overflow-y: clip;
+        transition:
+          block-size 0.35s var(--ease-out),
+          content-visibility 0.35s allow-discrete;
+      }
+
+      .faq__list details[open]::details-content {
+        block-size: auto;
+      }
+    }
+  }
+
+  @media (max-width: 860px) {
+    .faq {
+      grid-template-columns: 1fr;
+      gap: 0;
+    }
+
+    .faq .section-head {
+      position: static;
+    }
+  }
+
+  /* ---------- CTA ---------- */
+  .cta {
+    padding-block: 0 clamp(72px, 8.5vw, 120px);
+  }
+
+  .cta__card {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 48px;
+    padding: clamp(36px, 6vw, 80px);
+    border-radius: var(--radius-xl);
+    border: 1px solid rgb(239 147 6 / 0.25);
+    background:
+      radial-gradient(80% 120% at 0% 0%, rgb(239 147 6 / 0.24), transparent 60%),
+      radial-gradient(60% 90% at 100% 100%, rgb(255 107 0 / 0.14), transparent 70%),
+      var(--bg-raised);
+    overflow: hidden;
+  }
+
+  .cta__icon {
+    width: 72px;
+    height: 72px;
+    border-radius: 18px;
+    box-shadow: 0 18px 40px -12px rgb(239 147 6 / 0.55);
+  }
+
+  .cta__copy .h2 {
+    margin-top: 28px;
+  }
+
+  .cta__copy p {
+    max-width: 46ch;
+    margin-top: 16px;
+    font-size: 1.125rem;
+    color: var(--text-2);
+  }
+
+  .cta__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 16px 28px;
+    margin-top: 32px;
+  }
+
+  .cta__qr {
+    display: grid;
+    justify-items: center;
+    gap: 14px;
+    text-align: center;
+  }
+
+  .cta__qr-code {
+    width: 168px;
+    padding: 14px;
+    border-radius: 22px;
+    background: #fff;
+    box-shadow: 0 24px 50px -20px rgb(0 0 0 / 0.7);
+  }
+
+  .cta__qr-code :global(svg) {
+    width: 100%;
+    height: auto;
+  }
+
+  .cta__qr p {
+    font-size: 0.875rem;
+    color: var(--text-3);
+  }
+
+  /* The QR code only helps people who are not already on a phone. */
+  @media (max-width: 860px), (pointer: coarse) {
+    .cta__card {
+      grid-template-columns: 1fr;
+    }
+
+    .cta__qr {
+      display: none;
+    }
+  }
+</style>

@@ -1,0 +1,275 @@
+---
+import AdminLayout from '../../layouts/AdminLayout.astro';
+---
+
+<AdminLayout title="App config" active="app-config">
+  <div class="page-head">
+    <div>
+      <h2>App config</h2>
+      <p>Control which app versions must update. The app reads this when it opens and each time it comes back to the foreground.</p>
+    </div>
+  </div>
+
+  <div class="callout" style="margin-bottom:16px">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+    <div>
+      <p><strong>Only version 1.1 and later check this.</strong> Version 1.0 was released before this existed, so people on 1.0 never see these screens, whatever you publish.</p>
+    </div>
+  </div>
+
+  <div id="content">
+    <div class="grid grid-main">
+      <div class="card card-body"><div class="skeleton sk-chart" /></div>
+      <div class="card card-body"><div class="skeleton sk-chart" /></div>
+    </div>
+  </div>
+
+  <script>
+    import { ready } from '../../admin/auth';
+    import { APP_STORE_ID, rpc, supabase } from '../../admin/client';
+    import { busy, confirmDialog, esc, fmt, icon, showError, toast } from '../../admin/ui';
+
+    interface Config {
+      platform: 'ios';
+      min_supported_version: string;
+      latest_version: string;
+      update_required_message: string;
+      update_available_message: string;
+      version: number;
+      updated_at: string;
+    }
+    interface HistoryRow {
+      id: number;
+      version: number;
+      config: Omit<Config, 'platform' | 'version' | 'updated_at'>;
+      changed_by_email: string | null;
+      note: string | null;
+      created_at: string;
+    }
+
+    const VERSION = /^\d{1,4}(\.\d{1,4}){0,2}$/;
+    const content = document.getElementById('content')!;
+    let current: Config;
+    let storeVersion: string | null = null;
+
+    const key = (v: string) => [...v.split('.').map(Number), 0, 0, 0].slice(0, 3);
+    const cmp = (a: string, b: string) => {
+      const [x, y] = [key(a), key(b)];
+      for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] < y[i] ? -1 : 1;
+      return 0;
+    };
+
+    async function fetchStoreVersion(): Promise<string | null> {
+      try {
+        const res = await fetch(`https://itunes.apple.com/lookup?id=${APP_STORE_ID}&t=${Date.now()}`);
+        const body = await res.json();
+        return body.results?.[0]?.version ?? null;
+      } catch {
+        return null;
+      }
+    }
+
+    function phoneRequired(message: string) {
+      return `<div class="phone"><div class="phone-screen">
+        <span class="app-icon" style="display:grid;place-items:center;background:#ef9408;color:#1a1714" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v13"/><path d="m6 12 6 6 6-6"/></svg>
+        </span>
+        <h5>Update required</h5><p>${esc(message)}</p>
+        <span class="p-btn">Update on the App Store</span>
+      </div></div>`;
+    }
+    function phoneAvailable(message: string) {
+      return `<div class="phone"><div class="phone-screen alert">
+        <div class="phone-alert"><h5>Update available</h5><p>${esc(message)}</p>
+          <div class="actions"><span>Not now</span><span>Update</span></div></div>
+      </div></div>`;
+    }
+
+    /** First version that reads this config; 1.0 shipped before it existed. */
+    const FIRST_READER = '1.1';
+    const maxVersion = (a: string, b: string) => (cmp(a, b) >= 0 ? a : b);
+
+    function rules(min: string, latest: string) {
+      const row = (label: string, badge: string) => `<div class="version-row"><span>${esc(label)}</span>${badge}</div>`;
+      const rows = [row('Version 1.0', '<span class="badge">Not affected</span>')];
+      const promptFrom = maxVersion(min, FIRST_READER);
+      if (cmp(min, FIRST_READER) > 0) rows.push(row(`${FIRST_READER} up to before ${min}`, '<span class="badge badge-bad">Must update</span>'));
+      if (cmp(latest, promptFrom) > 0) rows.push(row(`${promptFrom} up to before ${latest}`, '<span class="badge badge-warn">Asked once, can skip</span>'));
+      rows.push(row(`${maxVersion(latest, FIRST_READER)} and later`, '<span class="badge badge-good">No prompt</span>'));
+      return rows.join('');
+    }
+
+    function render(history: HistoryRow[]) {
+      const c = current;
+      content.innerHTML = `
+        <div class="grid grid-main">
+          <div class="card">
+            <div class="card-head"><div><h3>Force update (iOS)</h3><p>Published version ${esc(c.version)} · ${esc(fmt.dateTime(c.updated_at))}</p></div>
+              <span class="badge ${storeVersion ? 'badge-info' : ''}">${storeVersion ? `App Store: ${esc(storeVersion)}` : 'App Store version unavailable'}</span></div>
+            <form class="card-body form-grid" id="config-form" novalidate>
+              <div class="field"><label for="f-min">Minimum supported version</label><input class="input" id="f-min" value="${esc(c.min_supported_version)}" inputmode="decimal" autocomplete="off"><span class="hint">Older versions get a screen they can't close until they update.</span></div>
+              <div class="field"><label for="f-latest">Latest version</label><input class="input" id="f-latest" value="${esc(c.latest_version)}" inputmode="decimal" autocomplete="off"><span class="hint">Versions between minimum and this get a skippable prompt.</span></div>
+              <div class="field span-2"><label for="f-required">"Update required" message</label><textarea class="textarea" id="f-required" maxlength="300">${esc(c.update_required_message)}</textarea></div>
+              <div class="field span-2"><label for="f-available">"Update available" message</label><textarea class="textarea" id="f-available" maxlength="300">${esc(c.update_available_message)}</textarea></div>
+              <div class="span-2" id="form-error" hidden></div>
+              <div class="span-2" style="display:flex;gap:8px;justify-content:flex-end">
+                <button type="button" class="btn" id="reset">Reset</button>
+                <button type="submit" class="btn btn-primary" id="publish">Publish</button>
+              </div>
+            </form>
+          </div>
+          <div class="card">
+            <div class="card-head"><div><h3>Who sees what</h3><p>With the values in the form</p></div></div>
+            <div class="card-body stack">
+              <div class="version-rows" id="rules"></div>
+              <div class="segmented" id="preview-tabs" role="group" aria-label="Preview">
+                <button data-preview="required" aria-pressed="true">Must update</button>
+                <button data-preview="available" aria-pressed="false">Asked to update</button>
+              </div>
+              <div id="preview"></div>
+            </div>
+          </div>
+        </div>
+        <div class="card section-gap">
+          <div class="card-head"><div><h3>History</h3><p>Every publish is kept. Rolling back publishes an old version again as a new one.</p></div></div>
+          <div class="table-wrap"><table class="table">
+            <thead><tr><th>Version</th><th>Minimum</th><th>Latest</th><th class="hide-sm">Published by</th><th>When</th><th class="r"></th></tr></thead>
+            <tbody>${history
+              .map(
+                (h) => `<tr>
+                  <td><span class="cell-main">v${esc(h.version)}</span>${h.version === c.version ? ' <span class="badge badge-good">Live</span>' : ''}${h.note ? `<div class="cell-sub">${esc(h.note)}</div>` : ''}</td>
+                  <td class="mono">${esc(h.config.min_supported_version)}</td>
+                  <td class="mono">${esc(h.config.latest_version)}</td>
+                  <td class="hide-sm">${esc(h.changed_by_email ?? 'Setup')}</td>
+                  <td class="nowrap">${esc(fmt.dateTime(h.created_at))}</td>
+                  <td class="r">${h.version === c.version ? '' : `<button class="btn btn-sm btn-ghost" data-rollback="${esc(h.id)}" data-v="${esc(h.version)}">${icon('undo')}Roll back</button>`}</td>
+                </tr>`,
+              )
+              .join('')}</tbody></table></div>
+        </div>`;
+
+      const form = content.querySelector<HTMLFormElement>('#config-form')!;
+      const val = (id: string) => content.querySelector<HTMLInputElement | HTMLTextAreaElement>(`#${id}`)!.value.trim();
+      let preview: 'required' | 'available' = 'required';
+      const errorBox = content.querySelector<HTMLElement>('#form-error')!;
+
+      const validate = () => {
+        const min = val('f-min');
+        const latest = val('f-latest');
+        const errors: string[] = [];
+        if (!VERSION.test(min)) errors.push('Minimum version must look like 1.2 or 1.2.3.');
+        if (!VERSION.test(latest)) errors.push('Latest version must look like 1.2 or 1.2.3.');
+        if (!errors.length && cmp(min, latest) > 0) errors.push("Minimum version can't be higher than the latest version.");
+        if (!val('f-required') || !val('f-available')) errors.push('Both messages are needed.');
+        content.querySelector('#f-min')!.setAttribute('aria-invalid', String(!VERSION.test(min)));
+        content.querySelector('#f-latest')!.setAttribute('aria-invalid', String(!VERSION.test(latest)));
+        const ahead = !errors.length && storeVersion && cmp(latest, storeVersion) > 0;
+        errorBox.hidden = !errors.length && !ahead;
+        errorBox.innerHTML = errors.length
+          ? `<div class="callout callout-bad">${icon('alert')}<div>${errors.map((e) => `<p>${esc(e)}</p>`).join('')}</div></div>`
+          : ahead
+            ? `<div class="callout callout-warn">${icon('alert')}<div><p><strong>${esc(latest)} isn't on the App Store yet</strong> (it has ${esc(storeVersion)}). People would be asked to update to a version they can't download.</p></div></div>`
+            : '';
+        if (!errors.length) content.querySelector('#rules')!.innerHTML = rules(min, latest);
+        content.querySelector('#preview')!.innerHTML =
+          preview === 'required' ? phoneRequired(val('f-required') || '…') : phoneAvailable(val('f-available') || '…');
+        content.querySelector<HTMLButtonElement>('#publish')!.disabled = errors.length > 0;
+        return { ok: !errors.length, ahead: Boolean(ahead), min, latest };
+      };
+      form.addEventListener('input', validate);
+      validate();
+
+      content.querySelector('#preview-tabs')!.addEventListener('click', (e) => {
+        const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-preview]');
+        if (!btn) return;
+        preview = btn.dataset.preview as typeof preview;
+        content.querySelectorAll('#preview-tabs button').forEach((b) => b.setAttribute('aria-pressed', String(b === btn)));
+        validate();
+      });
+      content.querySelector('#reset')!.addEventListener('click', () => render(history));
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const v = validate();
+        if (!v.ok) return;
+        const changes: string[] = [];
+        if (v.min !== c.min_supported_version) changes.push(`Minimum ${c.min_supported_version} → ${v.min}`);
+        if (v.latest !== c.latest_version) changes.push(`Latest ${c.latest_version} → ${v.latest}`);
+        if (val('f-required') !== c.update_required_message) changes.push('"Update required" message');
+        if (val('f-available') !== c.update_available_message) changes.push('"Update available" message');
+        if (!changes.length) return toast('Nothing has changed.', 'info');
+        const raisesMin = cmp(v.min, c.min_supported_version) > 0;
+        const note = await confirmDialog({
+          title: 'Publish this config?',
+          body: raisesMin
+            ? `Anyone on a version below ${v.min} (from 1.1 on) will be blocked until they update. It takes effect the next time they open the app.`
+            : 'It takes effect the next time people open the app.',
+          html: `<ul style="padding-left:18px;color:var(--text-2)">${changes.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>`,
+          confirmLabel: 'Publish',
+          danger: raisesMin,
+          input: { label: 'Note (optional)', placeholder: 'e.g. 1.2 fixes a crash on iPad' },
+          acknowledge: v.ahead ? `I understand ${v.latest} isn't on the App Store yet` : undefined,
+        });
+        if (note === null) return;
+        await busy(content.querySelector<HTMLButtonElement>('#publish')!, async () => {
+          try {
+            await rpc('admin_update_app_config', {
+              p_config: {
+                min_supported_version: v.min,
+                latest_version: v.latest,
+                update_required_message: val('f-required'),
+                update_available_message: val('f-available'),
+              },
+              p_expected_version: c.version,
+              p_note: note || null,
+            });
+            toast('Config published');
+            void load();
+          } catch (err) {
+            toast(err instanceof Error ? err.message : String(err), 'error');
+          }
+        });
+      });
+
+      content.querySelectorAll<HTMLButtonElement>('[data-rollback]').forEach((btn) =>
+        btn.addEventListener('click', async () => {
+          const h = history.find((x) => String(x.id) === btn.dataset.rollback)!;
+          const ok = await confirmDialog({
+            title: `Roll back to v${h.version}?`,
+            body: `This publishes minimum ${h.config.min_supported_version} and latest ${h.config.latest_version} again, with their messages.`,
+            confirmLabel: 'Roll back',
+          });
+          if (ok === null) return;
+          await busy(btn, async () => {
+            try {
+              await rpc('admin_rollback_app_config', { p_history_id: h.id, p_expected_version: c.version });
+              toast(`Rolled back to v${h.version}`);
+              void load();
+            } catch (err) {
+              toast(err instanceof Error ? err.message : String(err), 'error');
+            }
+          });
+        }),
+      );
+    }
+
+    async function load() {
+      try {
+        const [cfg, hist, store] = await Promise.all([
+          supabase.from('app_config').select('*').eq('platform', 'ios').single(),
+          supabase.from('app_config_history').select('*').eq('platform', 'ios').order('version', { ascending: false }).limit(50),
+          fetchStoreVersion(),
+        ]);
+        if (cfg.error) throw new Error(cfg.error.message);
+        if (hist.error) throw new Error(hist.error.message);
+        current = cfg.data as Config;
+        storeVersion = store;
+        render(hist.data as HistoryRow[]);
+      } catch (e) {
+        showError(content, e, load);
+      }
+    }
+
+    ready().then(load);
+  </script>
+</AdminLayout>

@@ -1,0 +1,174 @@
+---
+import AdminLayout from '../../layouts/AdminLayout.astro';
+---
+
+<AdminLayout title="Overview" active="overview">
+  <div class="page-head">
+    <div>
+      <h2>Overview</h2>
+      <p>Accounts, activity and practice from the Rehearse database. Admin accounts are not counted.</p>
+    </div>
+    <div class="toolbar">
+      <div class="segmented" id="range" role="group" aria-label="Date range">
+        <button data-days="7" aria-pressed="false">7 days</button>
+        <button data-days="30" aria-pressed="true">30 days</button>
+        <button data-days="90" aria-pressed="false">90 days</button>
+      </div>
+      <button class="btn btn-icon" id="refresh" aria-label="Refresh">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div id="content">
+    <div class="grid grid-tiles">
+      {Array.from({ length: 8 }, () => <div class="card tile"><div class="skeleton sk-line" style="width:50%" /><div class="skeleton sk-value" /><div class="skeleton sk-line" style="width:70%" /></div>)}
+    </div>
+    <div class="grid grid-2 section-gap">
+      <div class="card card-body"><div class="skeleton sk-chart" /></div>
+      <div class="card card-body"><div class="skeleton sk-chart" /></div>
+    </div>
+  </div>
+
+  <script>
+    import { ready } from '../../admin/auth';
+    import { rpc } from '../../admin/client';
+    import { esc, fmt, showError } from '../../admin/ui';
+    import { barList, columnChart, lineChart } from '../../admin/charts';
+
+    interface Overview {
+      days: number;
+      generated_at: string;
+      totals: Record<string, number>;
+      series: { day: string; signups: number; active: number; lessons: number; lesson_minutes: number }[];
+      lesson_types: { type: string; count: number }[];
+      onboarding_levels: { level: string; count: number }[];
+      practice_goals: { minutes: number; count: number }[];
+      top_songs: { title: string; composer: string; players: number }[];
+    }
+
+    const content = document.getElementById('content')!;
+    let days = 30;
+
+    const LEVELS: Record<string, string> = {
+      beginner: 'Beginner',
+      some_basics: 'Some basics',
+      intermediate: 'Intermediate',
+      advanced: 'Advanced',
+    };
+
+    function tile(label: string, value: string, sub = '') {
+      return `<div class="card tile"><span class="tile-label">${esc(label)}</span><span class="tile-value">${esc(value)}</span><span class="tile-sub">${esc(sub)}</span></div>`;
+    }
+
+    function render(o: Overview) {
+      const t = o.totals;
+      const sum = (k: keyof Overview['series'][number]) => o.series.reduce((s, r) => s + Number(r[k] || 0), 0);
+      content.innerHTML = `
+        <div class="grid grid-tiles">
+          ${tile('Total users', fmt.n(t.users), `${fmt.n(t.confirmed_users)} confirmed email`)}
+          ${tile('New users', fmt.n(sum('signups')), `in the last ${o.days} days · ${fmt.n(t.new_7d)} this week`)}
+          ${tile('Active today', fmt.n(t.active_1d), 'signed in, practised or played')}
+          ${tile('Active this week', fmt.n(t.active_7d), `${t.users ? fmt.pct(t.active_7d / t.users) : '—'} of users`)}
+          ${tile('Active this month', fmt.n(t.active_30d), `${t.users ? fmt.pct(t.active_30d / t.users) : '—'} of users`)}
+          ${tile('Practice time', fmt.duration(t.study_seconds), `${fmt.n(t.practising_users)} users have practised`)}
+          ${tile('Lesson activity', fmt.n(t.lesson_events), `events in the last ${o.days} days`)}
+          ${tile('Uploads', fmt.n(t.uploads), `by ${fmt.n(t.uploaders)} users · ${fmt.n(t.playlists)} playlists`)}
+        </div>
+
+        <div class="grid grid-2 section-gap">
+          <div class="card">
+            <div class="card-head"><div><h3>New sign-ups</h3><p>Accounts created per day</p></div></div>
+            <div class="card-body" id="chart-signups"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><div><h3>Active users per day</h3><p>Users who did a lesson or played a song</p></div></div>
+            <div class="card-body" id="chart-active"></div>
+          </div>
+        </div>
+
+        <div class="grid grid-main section-gap">
+          <div class="card">
+            <div class="card-head"><div><h3>Lesson activity</h3><p>Lesson events per day · ${fmt.n(sum('lesson_minutes'))} lesson minutes in total</p></div></div>
+            <div class="card-body" id="chart-lessons"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><div><h3>Lesson event types</h3><p>Last ${o.days} days</p></div></div>
+            <div class="card-body" id="lesson-types"></div>
+          </div>
+        </div>
+
+        <div class="grid grid-3 section-gap">
+          <div class="card">
+            <div class="card-head"><div><h3>Most-played Discover songs</h3><p>Distinct players, all time</p></div></div>
+            <div class="card-body" id="top-songs"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><div><h3>Skill level</h3><p>Chosen during onboarding</p></div></div>
+            <div class="card-body" id="levels"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><div><h3>Daily practice goal</h3><p>Minutes chosen during onboarding</p></div></div>
+            <div class="card-body" id="goals"></div>
+          </div>
+        </div>
+        <p class="hint section-gap">Updated ${esc(fmt.dateTime(o.generated_at))}. Firebase Analytics (app opens, screens, countries) is on the Analytics page.</p>`;
+
+      columnChart(document.getElementById('chart-signups')!, o.series, {
+        x: 'day',
+        series: { key: 'signups', label: 'Sign-ups', color: 'var(--series-1)' },
+        ariaLabel: 'New sign-ups per day',
+      });
+      lineChart(document.getElementById('chart-active')!, o.series, {
+        x: 'day',
+        series: [{ key: 'active', label: 'Active users', color: 'var(--series-1)' }],
+        ariaLabel: 'Active users per day',
+        area: true,
+      });
+      columnChart(document.getElementById('chart-lessons')!, o.series, {
+        x: 'day',
+        series: { key: 'lessons', label: 'Lesson events', color: 'var(--series-1)' },
+        ariaLabel: 'Lesson events per day',
+      });
+      barList(
+        document.getElementById('lesson-types')!,
+        o.lesson_types.map((r) => ({ label: r.type.replace(/_/g, ' '), value: r.count })),
+        { empty: 'No lesson activity in this period.' },
+      );
+      barList(
+        document.getElementById('top-songs')!,
+        o.top_songs.map((s) => ({ label: s.title, sub: s.composer, value: s.players })),
+        { empty: 'No Discover songs played yet.' },
+      );
+      barList(
+        document.getElementById('levels')!,
+        o.onboarding_levels.map((r) => ({ label: LEVELS[r.level] ?? r.level, value: r.count })),
+        { empty: 'No onboarding answers yet.' },
+      );
+      barList(
+        document.getElementById('goals')!,
+        o.practice_goals.map((g) => ({ label: `${g.minutes} minutes a day`, value: g.count })),
+        { empty: 'No onboarding answers yet.' },
+      );
+    }
+
+    async function load() {
+      try {
+        render(await rpc<Overview>('admin_overview', { p_days: days }));
+      } catch (e) {
+        showError(content, e, load);
+      }
+    }
+
+    document.getElementById('range')!.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-days]');
+      if (!btn) return;
+      days = Number(btn.dataset.days);
+      document.querySelectorAll('#range button').forEach((b) => b.setAttribute('aria-pressed', String(b === btn)));
+      void load();
+    });
+    document.getElementById('refresh')!.addEventListener('click', () => void load());
+
+    ready().then(load);
+  </script>
+</AdminLayout>

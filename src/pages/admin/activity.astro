@@ -1,0 +1,145 @@
+---
+import AdminLayout from '../../layouts/AdminLayout.astro';
+---
+
+<AdminLayout title="Activity log" active="activity">
+  <div class="page-head">
+    <div>
+      <h2>Activity log</h2>
+      <p>Every change made from this dashboard: config publishes, song edits and uploads, report decisions, account suspensions and sign-in phone changes. Entries can't be edited or deleted here.</p>
+    </div>
+    <div class="segmented" id="filter" role="group" aria-label="Filter activity">
+      <button data-prefix="" aria-pressed="true">All</button>
+      <button data-prefix="app_config" aria-pressed="false">Config</button>
+      <button data-prefix="song,storage" aria-pressed="false">Music</button>
+      <button data-prefix="report" aria-pressed="false">Reports</button>
+      <button data-prefix="user" aria-pressed="false">Users</button>
+      <button data-prefix="security" aria-pressed="false">Security</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div id="table"></div>
+    <div class="pager" id="pager" hidden>
+      <span id="pager-text"></span>
+      <button class="btn btn-sm" id="more">Load older entries</button>
+    </div>
+  </div>
+
+  <script>
+    import { ready } from '../../admin/auth';
+    import { supabase } from '../../admin/client';
+    import { esc, fmt, showError, states } from '../../admin/ui';
+
+    interface Entry {
+      id: number;
+      admin_email: string | null;
+      action: string;
+      target_type: string | null;
+      target_id: string | null;
+      details: Record<string, unknown>;
+      created_at: string;
+    }
+
+    const PAGE = 50;
+    const table = document.getElementById('table')!;
+    const pager = document.getElementById('pager')!;
+    let prefixes: string[] = [];
+    let entries: Entry[] = [];
+
+    const LABELS: Record<string, string> = {
+      'app_config.publish': 'Published app config',
+      'song.create': 'Created song',
+      'song.update': 'Updated song',
+      'storage.upload': 'Uploaded song file',
+      'report.resolved': 'Resolved report',
+      'report.dismissed': 'Dismissed report',
+      'report.open': 'Reopened report',
+      'user.suspend': 'Suspended account',
+      'user.unsuspend': 'Restored account',
+      'security.phone_added': 'Added sign-in phone',
+      'security.phone_removed': 'Removed sign-in phone',
+    };
+    const TONE: Record<string, string> = { 'security.phone_removed': 'badge-warn', 'security.phone_added': 'badge-info', 'user.suspend': 'badge-bad', 'app_config.publish': 'badge-accent', 'user.unsuspend': 'badge-good' };
+
+    function summary(e: Entry): string {
+      const d = e.details ?? {};
+      switch (e.action) {
+        case 'app_config.publish': {
+          const from = d.from as { min: string; latest: string } | undefined;
+          const to = d.to as { min: string; latest: string } | undefined;
+          return `v${esc(d.version)} · minimum ${esc(from?.min)} → ${esc(to?.min)}, latest ${esc(from?.latest)} → ${esc(to?.latest)}${d.note ? ` · “${esc(d.note)}”` : ''}`;
+        }
+        case 'song.create':
+          return `<a href="/admin/music/?song=${esc(e.target_id)}">${esc(d.title)}</a>${d.is_active ? ' · shown in the app' : ' · hidden'}`;
+        case 'song.update': {
+          const changed = (d.changed as string[] | undefined)?.filter((k) => k !== 'created_at') ?? [];
+          return `<a href="/admin/music/?song=${esc(e.target_id)}">${esc(d.title)}</a>${changed.length ? ` · ${esc(changed.join(', ').replace(/_/g, ' '))}` : ' · no changes'}`;
+        }
+        case 'storage.upload':
+          return `<a href="/admin/music/?song=${esc(e.target_id)}">${esc(d.file)}</a> · ${esc(fmt.bytes(d.bytes))}`;
+        case 'user.suspend':
+        case 'user.unsuspend':
+          return `<a href="/admin/users/?user=${esc(e.target_id)}">${esc(d.email ?? e.target_id)}</a>${d.reason ? ` · “${esc(d.reason)}”` : ''}`;
+        case 'security.phone_added':
+        case 'security.phone_removed':
+          return esc(d.name ?? 'Authenticator');
+        default:
+          if (e.action.startsWith('report.')) return `from ${esc(d.from)}${d.note ? ` · “${esc(d.note)}”` : ''}`;
+          return `<span class="mono">${esc(JSON.stringify(d))}</span>`;
+      }
+    }
+
+    function render(hasMore: boolean) {
+      if (!entries.length) {
+        table.innerHTML = states.empty('No activity yet', 'Changes made from this dashboard appear here.');
+        pager.hidden = true;
+        return;
+      }
+      table.innerHTML = `<div class="table-wrap"><table class="table">
+        <thead><tr><th>When</th><th>Action</th><th>Details</th><th class="hide-sm">By</th></tr></thead>
+        <tbody>${entries
+          .map(
+            (e) => `<tr>
+              <td class="nowrap" title="${esc(fmt.dateTime(e.created_at))}">${esc(fmt.ago(e.created_at))}</td>
+              <td class="nowrap"><span class="badge ${TONE[e.action] ?? ''}">${esc(LABELS[e.action] ?? e.action)}</span></td>
+              <td>${summary(e)}</td>
+              <td class="hide-sm">${esc(e.admin_email ?? '—')}</td>
+            </tr>`,
+          )
+          .join('')}</tbody></table></div>`;
+      pager.hidden = false;
+      document.getElementById('pager-text')!.textContent = `${fmt.n(entries.length)} ${entries.length === 1 ? 'entry' : 'entries'}`;
+      (document.getElementById('more') as HTMLButtonElement).hidden = !hasMore;
+    }
+
+    async function load(append = false) {
+      if (!append) {
+        entries = [];
+        table.innerHTML = states.tableSkeleton(8, 4);
+      }
+      try {
+        let q = supabase.from('admin_audit_log').select('*').order('id', { ascending: false }).limit(PAGE);
+        if (append && entries.length) q = q.lt('id', entries[entries.length - 1].id);
+        if (prefixes.length) q = q.or(prefixes.map((p) => `action.like.${p}.*`).join(','));
+        const { data, error } = await q;
+        if (error) throw new Error(error.message);
+        entries = entries.concat(data as Entry[]);
+        render((data as Entry[]).length === PAGE);
+      } catch (e) {
+        showError(table, e, () => load());
+      }
+    }
+
+    document.getElementById('filter')!.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-prefix]');
+      if (!btn) return;
+      prefixes = btn.dataset.prefix ? btn.dataset.prefix.split(',') : [];
+      document.querySelectorAll('#filter button').forEach((b) => b.setAttribute('aria-pressed', String(b === btn)));
+      void load();
+    });
+    document.getElementById('more')!.addEventListener('click', () => void load(true));
+
+    ready().then(() => load());
+  </script>
+</AdminLayout>

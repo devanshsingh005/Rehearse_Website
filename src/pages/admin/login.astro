@@ -1,0 +1,273 @@
+---
+import { Font } from 'astro:assets';
+import '../../styles/admin.css';
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Sign in · Rehearse Admin</title>
+    <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png" />
+    <Font cssVariable="--font-inter" preload />
+    <script is:inline>
+      try {
+        const t = localStorage.getItem('rehearse-admin-theme');
+        if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <main class="auth-page">
+      <div class="card auth-card">
+        <div class="brand">
+          <img src="/favicon-192.png" alt="" width="30" height="30" />
+          <span class="brand-text"><strong>Rehearse</strong><span>Admin console</span></span>
+        </div>
+
+        <div id="notice" class="callout" hidden style="margin-bottom:16px"></div>
+
+        <!-- Step 1: email + password -->
+        <section id="step-password">
+          <h1>Sign in</h1>
+          <p>Use your admin account. You'll confirm with your authenticator app next.</p>
+          <form class="auth-form" id="password-form" novalidate>
+            <div class="field">
+              <label for="email">Email</label>
+              <input class="input" id="email" type="email" autocomplete="username" required />
+            </div>
+            <div class="field">
+              <label for="password">Password</label>
+              <input class="input" id="password" type="password" autocomplete="current-password" required />
+            </div>
+            <p class="error-text" id="password-error" role="alert" hidden></p>
+            <button class="btn btn-primary" type="submit" id="password-submit">Continue</button>
+          </form>
+        </section>
+
+        <!-- Step 2a: first-time authenticator setup -->
+        <section id="step-enroll" hidden>
+          <h1>Set up two-factor sign-in</h1>
+          <p>Every admin sign-in needs a code from an authenticator app.</p>
+          <ol class="steps" style="margin-bottom:16px">
+            <li>Open Google Authenticator or Microsoft Authenticator and add an account.</li>
+            <li>Scan this QR code, or enter the setup key by hand.</li>
+            <li>Type the 6-digit code it shows.</li>
+          </ol>
+          <div class="qr"><img id="qr-image" alt="QR code for your authenticator app" /></div>
+          <div class="field" style="margin-top:14px">
+            <span class="field-label">Setup key</span>
+            <div class="secret"><span id="secret"></span><button class="btn btn-sm btn-ghost" type="button" id="copy-secret">Copy</button></div>
+          </div>
+          <form class="auth-form" id="enroll-form" style="margin-top:14px" novalidate>
+            <div class="field">
+              <label for="enroll-code">6-digit code</label>
+              <input class="input otp" id="enroll-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required />
+            </div>
+            <p class="error-text" id="enroll-error" role="alert" hidden></p>
+            <button class="btn btn-primary" type="submit" id="enroll-submit">Verify and continue</button>
+            <button class="btn btn-ghost" type="button" data-cancel>Use a different account</button>
+          </form>
+        </section>
+
+        <!-- Step 2b: returning admin -->
+        <section id="step-verify" hidden>
+          <h1>Enter your code</h1>
+          <p id="verify-intro">Open your authenticator app and enter the 6-digit code for Rehearse.</p>
+          <form class="auth-form" id="verify-form" novalidate>
+            <div class="field" id="factor-field" hidden>
+              <label for="verify-factor">Phone</label>
+              <select class="select" id="verify-factor"></select>
+            </div>
+            <div class="field">
+              <label for="verify-code">6-digit code</label>
+              <input class="input otp" id="verify-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required />
+            </div>
+            <p class="error-text" id="verify-error" role="alert" hidden></p>
+            <button class="btn btn-primary" type="submit" id="verify-submit">Verify</button>
+            <button class="btn btn-ghost" type="button" data-cancel>Use a different account</button>
+          </form>
+        </section>
+      </div>
+    </main>
+
+    <script>
+      import { supabase, errorMessage } from '../../admin/client';
+      import { listPhones, phoneName, preferredFirst, rememberFactor } from '../../admin/mfa';
+      import { busy, esc } from '../../admin/ui';
+
+      const params = new URLSearchParams(location.search);
+      const rawNext = params.get('next') ?? '/admin/';
+      // Only ever redirect within the admin area.
+      const next = rawNext.startsWith('/admin/') && !rawNext.startsWith('/admin/login') ? rawNext : '/admin/';
+
+      const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+      const steps = ['step-password', 'step-enroll', 'step-verify'];
+      const show = (id: string) => steps.forEach((s) => ($(s).hidden = s !== id));
+      const setError = (id: string, message: string | null) => {
+        const el = $(id);
+        el.textContent = message ?? '';
+        el.hidden = !message;
+      };
+      const notice = (message: string, kind: 'info' | 'warn' | 'bad' = 'info') => {
+        const el = $('notice');
+        el.className = `callout${kind === 'info' ? '' : ` callout-${kind}`}`;
+        el.textContent = message;
+        el.hidden = false;
+      };
+
+      if (params.get('reason') === 'idle') notice('You were signed out after 30 minutes without activity.');
+      if (params.get('reason') === 'denied') notice("That account doesn't have admin access.", 'bad');
+
+      let factorId = '';
+
+      function friendlyAuthError(e: unknown) {
+        const m = errorMessage(e);
+        if (/invalid login credentials/i.test(m)) return 'Email or password is incorrect.';
+        if (/email not confirmed/i.test(m)) return 'Confirm your email address first (check your inbox).';
+        if (/invalid totp|code/i.test(m)) return "That code didn't work. Check you picked the right phone and try again.";
+        if (/rate limit|too many/i.test(m)) return 'Too many attempts. Wait a minute and try again.';
+        return m;
+      }
+
+      /** After a password sign-in (or on load with a session): route to the right 2FA step. */
+      async function continueAfterPassword() {
+        const { data: member, error } = await supabase.rpc('admin_is_member');
+        if (error || member !== true) {
+          await supabase.auth.signOut();
+          show('step-password');
+          notice("That account doesn't have admin access.", 'bad');
+          return;
+        }
+
+        const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+        if (aal?.currentLevel === 'aal2') return finish();
+
+        const { verified, unverified } = await listPhones();
+        if (verified.length) {
+          const phones = preferredFirst(verified);
+          factorId = phones[0].id;
+          const picker = $<HTMLSelectElement>('verify-factor');
+          picker.innerHTML = phones.map((f) => `<option value="${esc(f.id)}">${esc(phoneName(f))}</option>`).join('');
+          picker.value = factorId;
+          $('factor-field').hidden = phones.length < 2;
+          $('verify-intro').textContent =
+            phones.length > 1
+              ? 'Pick the phone you have with you, then enter the 6-digit code its authenticator app shows for Rehearse.'
+              : 'Open your authenticator app and enter the 6-digit code for Rehearse.';
+          show('step-verify');
+          $('verify-code').focus();
+          return;
+        }
+
+        // Clear half-finished setups so enrolling again doesn't collide.
+        for (const f of unverified) {
+          await supabase.auth.mfa.unenroll({ factorId: f.id });
+        }
+        const { data: enrolled, error: enrollError } = await supabase.auth.mfa.enroll({
+          factorType: 'totp',
+          friendlyName: 'Rehearse Admin',
+          issuer: 'Rehearse Admin',
+        });
+        if (enrollError) throw enrollError;
+        factorId = enrolled.id;
+        $<HTMLImageElement>('qr-image').src = enrolled.totp.qr_code;
+        $('secret').textContent = enrolled.totp.secret.replace(/(.{4})/g, '$1 ').trim();
+        show('step-enroll');
+        $('enroll-code').focus();
+      }
+
+      async function verify(code: string) {
+        const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId, code });
+        if (error) throw error;
+        rememberFactor(factorId);
+        const { data: isAdmin } = await supabase.rpc('is_admin');
+        if (isAdmin !== true) throw new Error("That account doesn't have admin access.");
+        finish();
+      }
+
+      function finish() {
+        try {
+          localStorage.setItem('rehearse-admin-last-activity', String(Date.now()));
+        } catch {
+          /* ignore */
+        }
+        location.replace(next);
+      }
+
+      $('password-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        setError('password-error', null);
+        $('notice').hidden = true;
+        const email = $<HTMLInputElement>('email').value.trim();
+        const password = $<HTMLInputElement>('password').value;
+        if (!email || !password) return setError('password-error', 'Enter your email and password.');
+        await busy($<HTMLButtonElement>('password-submit'), async () => {
+          try {
+            const { error } = await supabase.auth.signInWithPassword({ email, password });
+            if (error) throw error;
+            await continueAfterPassword();
+          } catch (err) {
+            setError('password-error', friendlyAuthError(err));
+          }
+        });
+      });
+
+      for (const [form, input, button, errorId] of [
+        ['enroll-form', 'enroll-code', 'enroll-submit', 'enroll-error'],
+        ['verify-form', 'verify-code', 'verify-submit', 'verify-error'],
+      ] as const) {
+        const codeInput = $<HTMLInputElement>(input);
+        codeInput.addEventListener('input', () => {
+          codeInput.value = codeInput.value.replace(/\D/g, '').slice(0, 6);
+          if (codeInput.value.length === 6) $<HTMLFormElement>(form).requestSubmit();
+        });
+        $(form).addEventListener('submit', async (e) => {
+          e.preventDefault();
+          setError(errorId, null);
+          const code = codeInput.value;
+          if (!/^\d{6}$/.test(code)) return setError(errorId, 'Enter the 6-digit code.');
+          await busy($<HTMLButtonElement>(button), async () => {
+            try {
+              await verify(code);
+            } catch (err) {
+              codeInput.value = '';
+              setError(errorId, friendlyAuthError(err));
+            }
+          });
+        });
+      }
+
+      $<HTMLSelectElement>('verify-factor').addEventListener('change', (e) => {
+        factorId = (e.target as HTMLSelectElement).value;
+        setError('verify-error', null);
+        $('verify-code').focus();
+      });
+
+      document.querySelectorAll('[data-cancel]').forEach((b) =>
+        b.addEventListener('click', async () => {
+          await supabase.auth.signOut();
+          show('step-password');
+        }),
+      );
+
+      $('copy-secret').addEventListener('click', async () => {
+        await navigator.clipboard.writeText($('secret').textContent!.replace(/\s/g, ''));
+        $('copy-secret').textContent = 'Copied';
+      });
+
+      // Resume an existing session (for example after a reload during setup).
+      supabase.auth.getSession().then(async ({ data }) => {
+        if (!data.session) return;
+        try {
+          await continueAfterPassword();
+        } catch (err) {
+          notice(friendlyAuthError(err), 'bad');
+        }
+      });
+    </script>
+  </body>
+</html>

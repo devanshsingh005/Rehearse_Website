@@ -1,0 +1,135 @@
+---
+import AdminLayout from '../../layouts/AdminLayout.astro';
+---
+
+<AdminLayout title="Reports" active="reports">
+  <div class="page-head">
+    <div>
+      <h2>Reports</h2>
+      <p>Songs people reported from the Discover screen in the app. Resolve or dismiss each one; nothing is sent to the reporter.</p>
+    </div>
+    <div class="segmented" id="status" role="group" aria-label="Report status">
+      <button data-status="open" aria-pressed="true">Open</button>
+      <button data-status="resolved" aria-pressed="false">Resolved</button>
+      <button data-status="dismissed" aria-pressed="false">Dismissed</button>
+      <button data-status="all" aria-pressed="false">All</button>
+    </div>
+  </div>
+
+  <div class="card" id="list"></div>
+
+  <script>
+    import { ready } from '../../admin/auth';
+    import { rpc } from '../../admin/client';
+    import { busy, confirmDialog, esc, fmt, icon, showError, states, toast } from '../../admin/ui';
+
+    interface Report {
+      id: string;
+      reason: string;
+      content_type: string;
+      content_id: string;
+      status: 'open' | 'resolved' | 'dismissed';
+      admin_note: string | null;
+      created_at: string;
+      resolved_at: string | null;
+      reporter_id: string;
+      reporter_email: string | null;
+      reporter_username: string | null;
+      song_title: string | null;
+      song_active: boolean | null;
+      resolved_by_email: string | null;
+    }
+
+    const list = document.getElementById('list')!;
+    let status = 'open';
+
+    // Reason codes sent by the app's report sheet.
+    const REASONS: Record<string, string> = {
+      copyright_concern: 'Copyright concern',
+      offensive_content: 'Offensive content',
+      spam_or_misleading: 'Spam or misleading',
+    };
+
+    const STATUS_BADGE = {
+      open: '<span class="badge badge-warn">Open</span>',
+      resolved: '<span class="badge badge-good">Resolved</span>',
+      dismissed: '<span class="badge">Dismissed</span>',
+    };
+
+    async function load() {
+      list.innerHTML = states.tableSkeleton(4, 4);
+      try {
+        const reports = await rpc<Report[]>('admin_list_reports', { p_status: status });
+        if (!reports.length) {
+          list.innerHTML = states.empty(status === 'open' ? 'No open reports' : 'Nothing here', status === 'open' ? "You're all caught up." : '');
+          return;
+        }
+        list.innerHTML = `<div class="table-wrap"><table class="table">
+          <thead><tr><th>Reported</th><th>Reason</th><th class="hide-sm">Reporter</th><th>Status</th><th class="r">Actions</th></tr></thead>
+          <tbody>${reports
+            .map(
+              (r) => `<tr>
+                <td>${
+                  r.song_title
+                    ? `<a class="cell-main" href="/admin/music/?song=${esc(r.content_id)}">${esc(r.song_title)}</a><div class="cell-sub">${r.song_active ? 'In the app' : 'Hidden'} · ${esc(fmt.ago(r.created_at))}</div>`
+                    : `<span class="cell-main">${r.content_type === 'song' ? 'Song no longer exists' : esc(r.content_type)}</span><div class="cell-sub" title="${esc(r.content_id)}">${esc(fmt.date(r.created_at))} · ID ${esc(r.content_id.slice(0, 8))}</div>`
+                }</td>
+                <td style="max-width:360px">${esc(REASONS[r.reason] ?? r.reason.replace(/_/g, ' '))}${r.admin_note ? `<div class="cell-sub">Note: ${esc(r.admin_note)}</div>` : ''}</td>
+                <td class="hide-sm">${
+                  r.reporter_email
+                    ? `<a href="/admin/users/?user=${esc(r.reporter_id)}">${esc(r.reporter_username || r.reporter_email)}</a>`
+                    : '<span class="muted">Deleted account</span>'
+                }</td>
+                <td>${STATUS_BADGE[r.status]}${r.resolved_at ? `<div class="cell-sub">${esc(fmt.ago(r.resolved_at))}${r.resolved_by_email ? ` by ${esc(r.resolved_by_email)}` : ''}</div>` : ''}</td>
+                <td class="r nowrap">${
+                  r.status === 'open'
+                    ? `<button class="btn btn-sm" data-id="${esc(r.id)}" data-to="resolved">${icon('check')}Resolve</button>
+                       <button class="btn btn-sm btn-ghost" data-id="${esc(r.id)}" data-to="dismissed">Dismiss</button>`
+                    : `<button class="btn btn-sm btn-ghost" data-id="${esc(r.id)}" data-to="open">${icon('undo')}Reopen</button>`
+                }</td>
+              </tr>`,
+            )
+            .join('')}</tbody></table></div>`;
+      } catch (e) {
+        showError(list, e, load);
+      }
+    }
+
+    list.addEventListener('click', async (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-to]');
+      if (!btn) return;
+      const to = btn.dataset.to as Report['status'];
+      const copy = {
+        resolved: { title: 'Resolve this report?', body: 'Use this when you acted on it, for example by hiding or fixing the song.', label: 'Resolve' },
+        dismissed: { title: 'Dismiss this report?', body: 'Use this when no action is needed.', label: 'Dismiss' },
+        open: { title: 'Reopen this report?', body: 'It moves back to Open.', label: 'Reopen' },
+      }[to];
+      const note = await confirmDialog({
+        title: copy.title,
+        body: copy.body,
+        confirmLabel: copy.label,
+        input: { label: 'Note for the activity log (optional)', multiline: true },
+      });
+      if (note === null) return;
+      await busy(btn, async () => {
+        try {
+          await rpc('admin_update_report', { p_report_id: btn.dataset.id, p_status: to, p_note: note || null });
+          toast(`Report ${to === 'open' ? 'reopened' : to}`);
+          void load();
+        } catch (err) {
+          toast(err instanceof Error ? err.message : String(err), 'error');
+        }
+      });
+    });
+
+    document.getElementById('status')!.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-status]');
+      if (!btn) return;
+      status = btn.dataset.status!;
+      document.querySelectorAll('#status button').forEach((b) => b.setAttribute('aria-pressed', String(b === btn)));
+      void load();
+    });
+
+    ready().then(load);
+  </script>
+</AdminLayout>

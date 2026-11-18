@@ -1,0 +1,195 @@
+---
+/**
+ * Shell for every signed-in admin page: sidebar, top bar, theme and access gate.
+ * Content stays hidden until src/admin/auth.ts confirms an admin at aal2.
+ */
+import { Font } from 'astro:assets';
+import '../styles/admin.css';
+import LayoutDashboard from '@lucide/astro/icons/layout-dashboard';
+import ChartLine from '@lucide/astro/icons/chart-line';
+import Users from '@lucide/astro/icons/users';
+import ListMusic from '@lucide/astro/icons/list-music';
+import Flag from '@lucide/astro/icons/flag';
+import Smartphone from '@lucide/astro/icons/smartphone';
+import ScrollText from '@lucide/astro/icons/scroll-text';
+import LogOut from '@lucide/astro/icons/log-out';
+import Sun from '@lucide/astro/icons/sun';
+import Moon from '@lucide/astro/icons/moon';
+import PanelLeft from '@lucide/astro/icons/panel-left';
+import Menu from '@lucide/astro/icons/menu';
+import ShieldCheck from '@lucide/astro/icons/shield-check';
+import KeyRound from '@lucide/astro/icons/key-round';
+
+interface Props {
+  title: string;
+  active: 'overview' | 'analytics' | 'users' | 'music' | 'reports' | 'app-config' | 'activity' | 'security';
+}
+const { title, active } = Astro.props;
+
+const sections = [
+  {
+    label: 'Insights',
+    links: [
+      { key: 'overview', href: '/admin/', label: 'Overview', Icon: LayoutDashboard },
+      { key: 'analytics', href: '/admin/analytics/', label: 'Analytics', Icon: ChartLine },
+    ],
+  },
+  {
+    label: 'Manage',
+    links: [
+      { key: 'users', href: '/admin/users/', label: 'Users', Icon: Users },
+      { key: 'music', href: '/admin/music/', label: 'Music library', Icon: ListMusic },
+      { key: 'reports', href: '/admin/reports/', label: 'Reports', Icon: Flag, badge: true },
+    ],
+  },
+  {
+    label: 'App',
+    links: [
+      { key: 'app-config', href: '/admin/app-config/', label: 'App config', Icon: Smartphone },
+      { key: 'activity', href: '/admin/activity/', label: 'Activity log', Icon: ScrollText },
+    ],
+  },
+  {
+    label: 'Account',
+    links: [{ key: 'security', href: '/admin/security/', label: 'Security', Icon: KeyRound }],
+  },
+] as const;
+---
+
+<!doctype html>
+<html lang="en" data-auth="pending">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="referrer" content="no-referrer" />
+    <title>{title} · Rehearse Admin</title>
+    <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png" />
+    <Font cssVariable="--font-inter" preload />
+    <script is:inline>
+      // Apply theme and sidebar state before first paint.
+      try {
+        const t = localStorage.getItem('rehearse-admin-theme');
+        if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+        if (localStorage.getItem('rehearse-admin-sidebar') === 'collapsed') document.documentElement.dataset.sidebar = 'collapsed';
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar" id="sidebar" aria-label="Admin navigation">
+        <div class="sidebar-head">
+          <a class="brand" href="/admin/">
+            <img src="/favicon-192.png" alt="" width="30" height="30" />
+            <span class="brand-text"><strong>Rehearse</strong><span>Admin console</span></span>
+          </a>
+        </div>
+        <nav class="nav">
+          {
+            sections.map((section) => (
+              <>
+                <div class="nav-label">{section.label}</div>
+                {section.links.map(({ key, href, label, Icon, ...rest }) => (
+                  <a href={href} aria-current={active === key ? 'page' : undefined} title={label}>
+                    <Icon aria-hidden="true" />
+                    <span>{label}</span>
+                    {'badge' in rest && <span class="badge badge-warn" id="reports-badge" hidden />}
+                  </a>
+                ))}
+              </>
+            ))
+          }
+        </nav>
+        <div class="sidebar-foot">
+          <div class="who">
+            <span class="avatar" id="who-avatar">·</span>
+            <span class="who-text">
+              <strong id="who-email">Checking access…</strong>
+              <span><ShieldCheck size={12} aria-hidden="true" /> Authenticator verified</span>
+            </span>
+          </div>
+          <button class="btn btn-ghost" id="sign-out" style="justify-content:flex-start" title="Sign out">
+            <LogOut aria-hidden="true" /><span class="who-text">Sign out</span>
+          </button>
+        </div>
+      </aside>
+      <div class="scrim" id="scrim"></div>
+
+      <div class="content">
+        <header class="topbar">
+          <button class="btn btn-ghost btn-icon menu-btn" id="menu-btn" aria-label="Open navigation" aria-controls="sidebar">
+            <Menu aria-hidden="true" />
+          </button>
+          <button class="btn btn-ghost btn-icon collapse-btn" id="collapse-btn" aria-label="Collapse sidebar">
+            <PanelLeft aria-hidden="true" />
+          </button>
+          <h1>{title}</h1>
+          <span class="spacer"></span>
+          <slot name="topbar" />
+          <button class="btn btn-ghost btn-icon" id="theme-btn" aria-label="Switch theme">
+            <span class="theme-icon-dark"><Moon aria-hidden="true" /></span>
+            <span class="theme-icon-light" hidden><Sun aria-hidden="true" /></span>
+          </button>
+        </header>
+        <main class="app-main" id="main">
+          <slot />
+        </main>
+      </div>
+    </div>
+
+    <script>
+      import { ready, signOut } from '../admin/auth';
+      import { supabase } from '../admin/client';
+      import { initials } from '../admin/ui';
+
+      const root = document.documentElement;
+      const store = (k: string, v: string | null) => {
+        try {
+          v === null ? localStorage.removeItem(k) : localStorage.setItem(k, v);
+        } catch {
+          /* per-viewer convenience only */
+        }
+      };
+
+      // Theme
+      const themeBtn = document.getElementById('theme-btn')!;
+      const isDark = () =>
+        root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+      const paintThemeIcon = () => {
+        themeBtn.querySelector<HTMLElement>('.theme-icon-dark')!.hidden = isDark();
+        themeBtn.querySelector<HTMLElement>('.theme-icon-light')!.hidden = !isDark();
+      };
+      themeBtn.addEventListener('click', () => {
+        root.dataset.theme = isDark() ? 'light' : 'dark';
+        store('rehearse-admin-theme', root.dataset.theme);
+        paintThemeIcon();
+      });
+      paintThemeIcon();
+
+      // Sidebar
+      document.getElementById('collapse-btn')!.addEventListener('click', () => {
+        const collapsed = root.dataset.sidebar !== 'collapsed';
+        if (collapsed) root.dataset.sidebar = 'collapsed';
+        else delete root.dataset.sidebar;
+        store('rehearse-admin-sidebar', collapsed ? 'collapsed' : null);
+      });
+      const setNav = (open: boolean) => (open ? (root.dataset.nav = 'open') : delete root.dataset.nav);
+      document.getElementById('menu-btn')!.addEventListener('click', () => setNav(true));
+      document.getElementById('scrim')!.addEventListener('click', () => setNav(false));
+
+      document.getElementById('sign-out')!.addEventListener('click', () => void signOut());
+
+      ready().then(async ({ user }) => {
+        document.getElementById('who-email')!.textContent = user.email ?? 'Admin';
+        document.getElementById('who-avatar')!.textContent = initials(user.email);
+        const { data } = await supabase.rpc('admin_list_reports', { p_status: 'open' });
+        const open = Array.isArray(data) ? data.length : 0;
+        const badge = document.getElementById('reports-badge');
+        if (badge && open > 0) {
+          badge.textContent = String(open);
+          badge.hidden = false;
+        }
+      });
+    </script>
+  </body>
+</html>

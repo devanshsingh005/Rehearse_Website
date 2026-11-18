@@ -6,7 +6,8 @@ import sitemap from '@astrojs/sitemap';
 export default defineConfig({
   site: 'https://letsrehearse.studio',
 
-  integrations: [sitemap({ filter: (page) => !page.includes('/404') })],
+  // Admin pages are private: keep them out of the sitemap (they also send noindex).
+  integrations: [sitemap({ filter: (page) => !page.includes('/404') && !page.includes('/admin') })],
 
   // Fetch internal pages on hover so moving between pages feels instant.
   prefetch: { prefetchAll: true, defaultStrategy: 'hover' },

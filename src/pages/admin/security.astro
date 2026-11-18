@@ -1,0 +1,224 @@
+---
+import AdminLayout from '../../layouts/AdminLayout.astro';
+---
+
+<AdminLayout title="Security" active="security">
+  <div class="page-head">
+    <div>
+      <h2>Security</h2>
+      <p>The phones that can give you a sign-in code. Each phone has its own authenticator, so you can remove a lost one without affecting the others.</p>
+    </div>
+    <div class="toolbar">
+      <button class="btn btn-primary" id="add-phone" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+        Add phone
+      </button>
+    </div>
+  </div>
+
+  <div class="grid grid-main">
+    <div class="card" id="phones"></div>
+    <div class="card">
+      <div class="card-head"><div><h3>How it works</h3></div></div>
+      <div class="card-body">
+        <ol class="steps">
+          <li>Adding or removing a phone asks for a code from a phone you already have.</li>
+          <li>The new phone scans its own QR code in Google Authenticator or Microsoft Authenticator.</li>
+          <li>When you sign in, pick the phone you have with you and enter its code.</li>
+        </ol>
+        <div class="callout section-gap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+          <div><p>Adding a phone signs this account out everywhere else, including the Rehearse app if you use the same account there. This browser stays signed in.</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    import type { Factor } from '@supabase/supabase-js';
+    import { ready } from '../../admin/auth';
+    import { rpc, supabase } from '../../admin/client';
+    import { friendlyMfaError, lastFactorId, listPhones, phoneName, rememberFactor, verifyWithPhone } from '../../admin/mfa';
+    import { busy, confirmDialog, drawer, esc, fmt, icon, showError, states, toast } from '../../admin/ui';
+
+    const MAX_PHONES = 10; // Supabase's default limit of authenticators per account
+    const list = document.getElementById('phones')!;
+    const addButton = document.getElementById('add-phone') as HTMLButtonElement;
+    let phones: Factor[] = [];
+
+    async function load() {
+      list.innerHTML = states.tableSkeleton(2, 3);
+      try {
+        const { verified, unverified } = await listPhones();
+        // Leftovers from an add that was abandoned part-way: never usable, so clear them.
+        await Promise.all(unverified.map((f) => supabase.auth.mfa.unenroll({ factorId: f.id })));
+        phones = verified;
+        render();
+      } catch (e) {
+        showError(list, e, load);
+      }
+    }
+
+    function render() {
+      addButton.disabled = phones.length >= MAX_PHONES;
+      const last = lastFactorId();
+      list.innerHTML = `
+        <div class="card-head" style="padding-bottom:12px"><div><h3>Phones</h3><p>${phones.length} of ${MAX_PHONES}</p></div></div>
+        <div class="table-wrap"><table class="table"><tbody>${phones
+          .map(
+            (f) => `<tr>
+              <td><div class="song-cell"><span class="initials">${icon('smartphone', 'width="16" height="16"')}</span>
+                <div><div class="cell-main">${esc(phoneName(f))}${f.id === last ? ' <span class="badge badge-accent">Used on this browser</span>' : ''}</div>
+                <div class="cell-sub">Added ${esc(fmt.date(f.created_at))}</div></div></div></td>
+              <td class="r">${
+                phones.length > 1
+                  ? `<button class="btn btn-sm btn-ghost" data-remove="${esc(f.id)}">${icon('trash')}Remove</button>`
+                  : '<span class="hint">Your only phone</span>'
+              }</td>
+            </tr>`,
+          )
+          .join('')}</tbody></table></div>`;
+    }
+
+    async function addPhone() {
+      const verifiedWith = await verifyWithPhone({
+        title: 'Confirm it’s you',
+        body: 'Enter a code from a phone you already use, so nobody else can add one.',
+        factors: phones,
+        confirmLabel: 'Continue',
+      });
+      if (!verifiedWith) return;
+
+      const taken = new Set(phones.map((f) => phoneName(f).toLowerCase()));
+      let name: string | null = '';
+      while (true) {
+        name = await confirmDialog({
+          title: 'Name the new phone',
+          body: 'You’ll pick it by this name when you sign in.',
+          confirmLabel: 'Next',
+          input: { label: 'Phone name', placeholder: 'e.g. Pixel 9 or Work iPhone', required: true },
+        });
+        if (name === null) return;
+        name = name.slice(0, 40);
+        if (!taken.has(name.toLowerCase())) break;
+        toast(`You already have a phone called “${name}”. Pick another name.`, 'error');
+      }
+
+      const { data: enrolled, error } = await supabase.auth.mfa.enroll({ factorType: 'totp', friendlyName: name, issuer: 'Rehearse Admin' });
+      if (error) return toast(friendlyMfaError(error.message), 'error');
+
+      let finished = false;
+      const d = drawer(`Add ${name}`, () => {
+        if (!finished) void supabase.auth.mfa.unenroll({ factorId: enrolled.id });
+      });
+      d.body.innerHTML = `
+        <ol class="steps">
+          <li>On the new phone, open Google Authenticator or Microsoft Authenticator and add an account.</li>
+          <li>Scan this QR code, or enter the setup key by hand.</li>
+          <li>Type the 6-digit code the new phone shows.</li>
+        </ol>
+        <div class="qr"><img src="${esc(enrolled.totp.qr_code)}" alt="QR code for the new phone"></div>
+        <div class="field"><span class="field-label">Setup key</span>
+          <div class="secret"><span id="new-secret">${esc(enrolled.totp.secret.replace(/(.{4})/g, '$1 ').trim())}</span><button class="btn btn-sm btn-ghost" type="button" id="copy-new-secret">Copy</button></div></div>
+        <form class="auth-form" id="new-phone-form" novalidate>
+          <div class="field"><label for="new-code">Code from ${esc(name)}</label>
+            <input class="input otp" id="new-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required></div>
+          <p class="error-text" id="new-error" role="alert" hidden></p>
+        </form>`;
+      d.foot.hidden = false;
+      d.foot.innerHTML = `<button class="btn" data-cancel>Cancel</button><button class="btn btn-primary" data-verify>Add phone</button>`;
+
+      const code = d.body.querySelector<HTMLInputElement>('#new-code')!;
+      const errorEl = d.body.querySelector<HTMLElement>('#new-error')!;
+      const verifyBtn = d.foot.querySelector<HTMLButtonElement>('[data-verify]')!;
+      d.body.querySelector('#copy-new-secret')!.addEventListener('click', async (e) => {
+        await navigator.clipboard.writeText(enrolled.totp.secret);
+        (e.currentTarget as HTMLElement).textContent = 'Copied';
+      });
+      d.foot.querySelector('[data-cancel]')!.addEventListener('click', () => d.close());
+
+      const verify = () =>
+        busy(verifyBtn, async () => {
+          errorEl.hidden = true;
+          if (!/^\d{6}$/.test(code.value)) {
+            errorEl.textContent = 'Enter the 6-digit code from the new phone.';
+            errorEl.hidden = false;
+            return;
+          }
+          const { error: verifyError } = await supabase.auth.mfa.challengeAndVerify({ factorId: enrolled.id, code: code.value });
+          if (verifyError) {
+            code.value = '';
+            errorEl.textContent = friendlyMfaError(verifyError.message);
+            errorEl.hidden = false;
+            return;
+          }
+          finished = true;
+          try {
+            await rpc('admin_record', { p_action: 'security.phone_added', p_target_type: 'authenticator', p_target_id: enrolled.id, p_details: { name } });
+          } catch {
+            /* the phone is added even if logging fails */
+          }
+          d.close();
+          toast(`${name} added. Other sessions for this account were signed out.`);
+          void load();
+        });
+      code.addEventListener('input', () => {
+        code.value = code.value.replace(/\D/g, '').slice(0, 6);
+        if (code.value.length === 6) void verify();
+      });
+      d.body.querySelector('#new-phone-form')!.addEventListener('submit', (e) => {
+        e.preventDefault();
+        void verify();
+      });
+      verifyBtn.addEventListener('click', () => void verify());
+      code.focus();
+    }
+
+    async function removePhone(id: string, button: HTMLButtonElement) {
+      const target = phones.find((f) => f.id === id);
+      if (!target || phones.length < 2) return;
+      const ok = await confirmDialog({
+        title: `Remove ${phoneName(target)}?`,
+        body: 'Its codes will stop working straight away. Your other phones keep working.',
+        confirmLabel: 'Continue',
+        danger: true,
+      });
+      if (ok === null) return;
+      const verifiedWith = await verifyWithPhone({
+        title: 'Confirm it’s you',
+        body: 'Enter a code from any of your phones.',
+        factors: phones,
+        confirmLabel: `Remove ${phoneName(target)}`,
+      });
+      if (!verifiedWith) return;
+
+      await busy(button, async () => {
+        const { error } = await supabase.auth.mfa.unenroll({ factorId: id });
+        if (error) return toast(friendlyMfaError(error.message), 'error');
+        try {
+          await rpc('admin_record', { p_action: 'security.phone_removed', p_target_type: 'authenticator', p_target_id: id, p_details: { name: phoneName(target) } });
+        } catch {
+          /* removal already happened */
+        }
+        if (lastFactorId() === id && verifiedWith !== id) rememberFactor(verifiedWith);
+        toast(`${phoneName(target)} removed`);
+        // If this session was verified with the removed phone, it drops below admin level: confirm again with another phone.
+        await supabase.auth.refreshSession();
+        const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+        if (aal?.currentLevel !== 'aal2') {
+          location.replace(`/admin/login/?next=${encodeURIComponent('/admin/security/')}`);
+          return;
+        }
+        void load();
+      });
+    }
+
+    addButton.addEventListener('click', () => void addPhone());
+    list.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-remove]');
+      if (btn) void removePhone(btn.dataset.remove!, btn);
+    });
+
+    ready().then(load);
+  </script>
+</AdminLayout>

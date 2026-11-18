@@ -1,0 +1,356 @@
+---
+import AdminLayout from '../../layouts/AdminLayout.astro';
+---
+
+<AdminLayout title="Music library" active="music">
+  <div class="page-head">
+    <div>
+      <h2>Music library</h2>
+      <p>The Discover songs everyone sees in the app. Sheet music is converted on a device beforehand; upload the finished files here.</p>
+    </div>
+    <div class="toolbar">
+      <button class="btn btn-primary" id="new-song">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+        Add song
+      </button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-body" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between">
+      <div class="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input class="input" id="search" type="search" placeholder="Search title or composer" aria-label="Search songs" />
+      </div>
+      <div class="segmented" id="filter" role="group" aria-label="Filter songs">
+        <button data-filter="all" aria-pressed="true">All</button>
+        <button data-filter="live" aria-pressed="false">In the app</button>
+        <button data-filter="hidden" aria-pressed="false">Hidden</button>
+        <button data-filter="incomplete" aria-pressed="false">Missing files</button>
+      </div>
+    </div>
+    <div id="table"></div>
+  </div>
+
+  <script>
+    import { ready } from '../../admin/auth';
+    import { LIBRARY_BUCKET, rpc, supabase } from '../../admin/client';
+    import { busy, confirmDialog, drawer, esc, fmt, icon, showError, states, toast } from '../../admin/ui';
+
+    interface Song {
+      id: string;
+      title: string;
+      composer: string;
+      level: number;
+      tempo: 'slow' | 'medium' | 'fast';
+      hands: 'right_only' | 'left_only' | 'both';
+      skill_tags: string[];
+      skill_description: string;
+      initials: string;
+      is_free: boolean;
+      is_active: boolean;
+      sort_order: number;
+      cover_image_url: string | null;
+      original_pdf_path: string | null;
+      labeled_pdf_path: string | null;
+      output_json_path: string | null;
+      created_at?: string;
+      players?: number;
+      open_reports?: number;
+    }
+
+    type FileKind = 'original' | 'labeled' | 'score' | 'cover';
+    const FILES: Record<FileKind, { field: keyof Song; label: string; help: string; accept: string; required: boolean }> = {
+      original: { field: 'original_pdf_path', label: 'Original sheet (PDF)', help: 'The score as printed.', accept: 'application/pdf,.pdf', required: true },
+      labeled: { field: 'labeled_pdf_path', label: 'Labeled sheet (PDF)', help: 'The score with note names, from the converter.', accept: 'application/pdf,.pdf', required: true },
+      score: { field: 'output_json_path', label: 'Score data (score.json)', help: 'Converted MusicXML that drives the piano animation.', accept: 'application/json,.json', required: true },
+      cover: { field: 'cover_image_url', label: 'Cover image (optional)', help: 'PNG, JPEG or WebP.', accept: 'image/png,image/jpeg,image/webp', required: false },
+    };
+    const MAX_BYTES = 20 * 1024 * 1024;
+    const TEMPOS = { slow: 'Slow', medium: 'Medium', fast: 'Fast' };
+    const HANDS = { right_only: 'Right hand', left_only: 'Left hand', both: 'Both hands' };
+
+    const table = document.getElementById('table')!;
+    let songs: Song[] = [];
+    let search = '';
+    let filter = 'all';
+
+    const hasFiles = (s: Pick<Song, 'original_pdf_path' | 'labeled_pdf_path' | 'output_json_path'>) =>
+      !!(s.original_pdf_path && s.labeled_pdf_path && s.output_json_path);
+
+    function render() {
+      const q = search.toLowerCase();
+      const rows = songs.filter(
+        (s) =>
+          (!q || s.title.toLowerCase().includes(q) || s.composer.toLowerCase().includes(q)) &&
+          (filter === 'all' ||
+            (filter === 'live' && s.is_active) ||
+            (filter === 'hidden' && !s.is_active) ||
+            (filter === 'incomplete' && !hasFiles(s))),
+      );
+      if (!songs.length) {
+        table.innerHTML = states.empty('No songs yet', 'Add the first Discover song.', 'inbox');
+        return;
+      }
+      if (!rows.length) {
+        table.innerHTML = states.empty('No songs match', 'Try a different search or filter.');
+        return;
+      }
+      table.innerHTML = `<div class="table-wrap"><table class="table">
+        <thead><tr><th>Song</th><th>Status</th><th class="hide-sm">Level</th><th class="hide-sm">Hands</th><th>Files</th><th class="r hide-sm">Players</th><th class="r hide-sm">Order</th></tr></thead>
+        <tbody>${rows
+          .map((s) => {
+            const dots = [s.original_pdf_path, s.labeled_pdf_path, s.output_json_path].map((v) => `<i class="${v ? 'on' : ''}"></i>`).join('');
+            return `<tr data-clickable data-id="${esc(s.id)}" tabindex="0">
+              <td><div class="song-cell"><span class="initials">${esc(s.initials)}</span><div><div class="cell-main">${esc(s.title)}</div><div class="cell-sub">${esc(s.composer)}</div></div></div></td>
+              <td>${s.is_active ? '<span class="badge badge-good">In the app</span>' : '<span class="badge">Hidden</span>'}${s.open_reports ? ` <span class="badge badge-warn">${esc(s.open_reports)} report${s.open_reports > 1 ? 's' : ''}</span>` : ''}</td>
+              <td class="hide-sm">${esc(s.level)} · ${esc(TEMPOS[s.tempo] ?? s.tempo)}</td>
+              <td class="hide-sm">${esc(HANDS[s.hands] ?? s.hands)}</td>
+              <td><span class="dots" title="Original, labeled, score">${dots}</span> ${hasFiles(s) ? '' : '<span class="badge badge-warn">Incomplete</span>'}</td>
+              <td class="r num hide-sm">${esc(fmt.n(s.players ?? 0))}</td>
+              <td class="r num hide-sm">${esc(s.sort_order)}</td>
+            </tr>`;
+          })
+          .join('')}</tbody></table></div>`;
+    }
+
+    async function load() {
+      table.innerHTML = states.tableSkeleton(6, 6);
+      try {
+        songs = await rpc<Song[]>('admin_list_songs');
+        render();
+      } catch (e) {
+        showError(table, e, load);
+      }
+    }
+
+    async function validateFile(kind: FileKind, file: File): Promise<string | null> {
+      if (file.size > MAX_BYTES) return `That file is ${fmt.bytes(file.size)}; the limit is 20 MB.`;
+      if (kind === 'original' || kind === 'labeled') {
+        const head = new TextDecoder().decode(await file.slice(0, 5).arrayBuffer());
+        if (head !== '%PDF-') return "That file isn't a PDF.";
+      }
+      if (kind === 'score') {
+        try {
+          const parsed = JSON.parse(await file.text());
+          if (!parsed || typeof parsed !== 'object' || !('score-partwise' in parsed)) {
+            return 'This JSON has no "score-partwise" section, so the app can\'t play it. Use the converter\'s score.json.';
+          }
+        } catch {
+          return "That file isn't valid JSON.";
+        }
+      }
+      if (kind === 'cover' && !['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) return 'Use a PNG, JPEG or WebP image.';
+      return null;
+    }
+
+    async function uploadFile(songId: string, kind: FileKind, file: File): Promise<string> {
+      const ext = kind === 'cover' ? (file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : 'jpg') : '';
+      const name = { original: 'original.pdf', labeled: 'labeled.pdf', score: 'score.json', cover: `cover.${ext}` }[kind];
+      const contentType = { original: 'application/pdf', labeled: 'application/pdf', score: 'application/json', cover: file.type }[kind];
+      const path = `songs/${songId}/${name}`;
+      const { error } = await supabase.storage.from(LIBRARY_BUCKET).upload(path, file, { upsert: true, contentType, cacheControl: '60' });
+      if (error) throw new Error(error.message);
+      await rpc('admin_record', {
+        p_action: 'storage.upload',
+        p_target_type: 'song',
+        p_target_id: songId,
+        p_details: { file: name, bytes: file.size, original_name: file.name.slice(0, 200) },
+      });
+      return supabase.storage.from(LIBRARY_BUCKET).getPublicUrl(path).data.publicUrl;
+    }
+
+    function blankSong(): Song {
+      return {
+        id: crypto.randomUUID(),
+        title: '',
+        composer: '',
+        level: 1,
+        tempo: 'medium',
+        hands: 'both',
+        skill_tags: [],
+        skill_description: '',
+        initials: '',
+        is_free: true,
+        is_active: false,
+        sort_order: (songs.reduce((m, s) => Math.max(m, s.sort_order), 0) || 0) + 1,
+        cover_image_url: null,
+        original_pdf_path: null,
+        labeled_pdf_path: null,
+        output_json_path: null,
+      };
+    }
+
+    function openEditor(existing?: Song) {
+      const isNew = !existing;
+      const song: Song = structuredClone(existing ?? blankSong());
+      let dirty = false;
+      const d = drawer(isNew ? 'Add song' : song.title, () => {
+        if (location.search) history.replaceState(null, '', location.pathname);
+      });
+
+      const option = (value: string | number, label: string, current: string | number) =>
+        `<option value="${esc(value)}" ${String(value) === String(current) ? 'selected' : ''}>${esc(label)}</option>`;
+
+      d.body.innerHTML = `
+        ${!isNew && song.is_active ? `<div class="callout">${icon('info')}<div><p><strong>This song is in the app.</strong> Replacing a file updates it for everyone within a few minutes, even before you press Save.</p></div></div>` : ''}
+        <section class="drawer-section"><h4>Details</h4>
+          <form class="form-grid" id="song-form" novalidate>
+            <div class="field span-2"><label for="f-title">Title</label><input class="input" id="f-title" maxlength="200" required value="${esc(song.title)}"></div>
+            <div class="field"><label for="f-composer">Composer</label><input class="input" id="f-composer" maxlength="200" required value="${esc(song.composer)}"></div>
+            <div class="field"><label for="f-initials">Initials</label><input class="input" id="f-initials" maxlength="3" placeholder="From the title" value="${esc(song.initials)}"><span class="hint">Shown when there's no cover. Up to 3 letters.</span></div>
+            <div class="field"><label for="f-level">Level</label><select class="select" id="f-level">${[1, 2, 3, 4, 5].map((l) => option(l, `Level ${l}`, song.level)).join('')}</select></div>
+            <div class="field"><label for="f-tempo">Tempo</label><select class="select" id="f-tempo">${Object.entries(TEMPOS).map(([v, l]) => option(v, l, song.tempo)).join('')}</select></div>
+            <div class="field"><label for="f-hands">Hands</label><select class="select" id="f-hands">${Object.entries(HANDS).map(([v, l]) => option(v, l, song.hands)).join('')}</select></div>
+            <div class="field"><label for="f-order">Order in Discover</label><input class="input" id="f-order" type="number" min="0" max="32767" value="${esc(song.sort_order)}"><span class="hint">Lower numbers show first.</span></div>
+            <div class="field span-2"><label for="f-tags">Skill tags</label><input class="input" id="f-tags" placeholder="e.g. scales, legato" value="${esc(song.skill_tags.join(', '))}"><span class="hint">Separate with commas.</span></div>
+            <div class="field span-2"><label for="f-desc">What it teaches</label><textarea class="textarea" id="f-desc" maxlength="1000">${esc(song.skill_description)}</textarea></div>
+            <div class="span-2" style="display:flex;flex-wrap:wrap;gap:20px">
+              <label class="switch"><input type="checkbox" id="f-free" ${song.is_free ? 'checked' : ''}><span class="track"></span><span>Free</span></label>
+              <label class="switch"><input type="checkbox" id="f-active" ${song.is_active ? 'checked' : ''}><span class="track"></span><span>Show in the app</span></label>
+            </div>
+          </form>
+        </section>
+        <section class="drawer-section"><h4>Files</h4><div class="stack" id="files" style="gap:10px"></div>
+          <p class="hint" style="margin-top:8px">Stored in the public <span class="mono">library</span> bucket at <span class="mono">songs/${esc(song.id)}/</span>.</p>
+        </section>`;
+
+      const filesEl = d.body.querySelector<HTMLElement>('#files')!;
+      const renderFiles = () => {
+        filesEl.innerHTML = (Object.keys(FILES) as FileKind[])
+          .map((kind) => {
+            const spec = FILES[kind];
+            const url = song[spec.field] as string | null;
+            return `<div class="file-slot ${url ? 'ok' : ''}">
+              <span class="icon">${icon(url ? 'fileCheck' : 'file')}</span>
+              <span class="meta"><strong>${esc(spec.label)}</strong><span>${url ? esc(url.split('/').slice(-1)[0]) : esc(spec.help)}</span></span>
+              ${url ? `<a class="btn btn-sm btn-ghost btn-icon" href="${esc(url)}" target="_blank" rel="noopener noreferrer" aria-label="Open ${esc(spec.label)}">${icon('external')}</a>` : ''}
+              <label class="btn btn-sm">${icon('upload')}${url ? 'Replace' : 'Upload'}<input type="file" class="sr-only" data-kind="${kind}" accept="${spec.accept}"></label>
+            </div>`;
+          })
+          .join('');
+      };
+      renderFiles();
+
+      filesEl.addEventListener('change', async (e) => {
+        const input = e.target as HTMLInputElement;
+        const kind = input.dataset.kind as FileKind;
+        const file = input.files?.[0];
+        input.value = '';
+        if (!kind || !file) return;
+        const problem = await validateFile(kind, file);
+        if (problem) return toast(problem, 'error');
+        const slot = input.closest('.file-slot')!;
+        slot.querySelector('.meta span')!.textContent = `Uploading ${file.name}…`;
+        try {
+          const url = await uploadFile(song.id, kind, file);
+          (song as any)[FILES[kind].field] = url;
+          dirty = true;
+          renderFiles();
+          toast(`${FILES[kind].label.replace(/ \(.*\)/, '')} uploaded${isNew || !existing?.[FILES[kind].field] ? '. Save to apply.' : ''}`);
+        } catch (err) {
+          renderFiles();
+          toast(err instanceof Error ? err.message : String(err), 'error');
+        }
+      });
+      d.body.querySelector('#song-form')!.addEventListener('input', () => (dirty = true));
+
+      d.foot.hidden = false;
+      d.foot.innerHTML = `${!isNew && song.is_active ? `<button class="btn" data-hide style="margin-right:auto">${icon('eyeOff')}Hide from app</button>` : ''}<button class="btn" data-cancel>Cancel</button><button class="btn btn-primary" data-save>${isNew ? 'Create song' : 'Save changes'}</button>`;
+
+      const read = (): Song => {
+        const v = (id: string) => (d.body.querySelector<HTMLInputElement>(`#${id}`)!.value ?? '').trim();
+        return {
+          ...song,
+          title: v('f-title'),
+          composer: v('f-composer'),
+          initials: v('f-initials'),
+          level: Number(v('f-level')),
+          tempo: v('f-tempo') as Song['tempo'],
+          hands: v('f-hands') as Song['hands'],
+          sort_order: Math.max(0, Math.min(32767, Math.round(Number(v('f-order')) || 0))),
+          skill_tags: v('f-tags').split(',').map((t) => t.trim()).filter(Boolean),
+          skill_description: v('f-desc'),
+          is_free: d.body.querySelector<HTMLInputElement>('#f-free')!.checked,
+          is_active: d.body.querySelector<HTMLInputElement>('#f-active')!.checked,
+        };
+      };
+
+      const save = async (next: Song, btn: HTMLButtonElement) => {
+        const missing: string[] = [];
+        if (!next.title) missing.push('a title');
+        if (!next.composer) missing.push('a composer');
+        if (missing.length) return toast(`Add ${missing.join(' and ')}.`, 'error');
+        if (next.is_active && !hasFiles(next)) return toast('Upload the original PDF, labeled PDF and score.json before showing the song in the app.', 'error');
+        if (next.is_active && !existing?.is_active) {
+          const ok = await confirmDialog({
+            title: `Show "${next.title}" in the app?`,
+            body: 'Everyone will see it in Discover the next time the song list refreshes.',
+            confirmLabel: 'Show in the app',
+          });
+          if (ok === null) return;
+        }
+        await busy(btn, async () => {
+          try {
+            await rpc('admin_save_song', { p_song: next });
+            toast(isNew ? 'Song created' : 'Changes saved');
+            dirty = false;
+            d.close();
+            void load();
+          } catch (err) {
+            toast(err instanceof Error ? err.message : String(err), 'error');
+          }
+        });
+      };
+
+      d.foot.querySelector('[data-save]')!.addEventListener('click', (e) => void save(read(), e.currentTarget as HTMLButtonElement));
+      d.foot.querySelector('[data-cancel]')!.addEventListener('click', async () => {
+        if (dirty && (await confirmDialog({ title: 'Discard changes?', body: 'Uploaded files stay in storage, but the song details you changed are lost.', confirmLabel: 'Discard', danger: true })) === null) return;
+        d.close();
+      });
+      d.foot.querySelector('[data-hide]')?.addEventListener('click', async (e) => {
+        const ok = await confirmDialog({
+          title: `Hide "${song.title}"?`,
+          body: "It disappears from Discover. People who already opened it keep their saved copy. Nothing is deleted, so you can show it again later.",
+          confirmLabel: 'Hide from app',
+          danger: true,
+        });
+        if (ok === null) return;
+        await save({ ...(existing as Song), is_active: false }, e.currentTarget as HTMLButtonElement);
+      });
+    }
+
+    table.addEventListener('click', (e) => {
+      const row = (e.target as HTMLElement).closest<HTMLElement>('tr[data-id]');
+      const s = row && songs.find((x) => x.id === row.dataset.id);
+      if (s) openEditor(s);
+    });
+    table.addEventListener('keydown', (e) => {
+      const row = (e.target as HTMLElement).closest<HTMLElement>('tr[data-id]');
+      const s = row && songs.find((x) => x.id === row.dataset.id);
+      if (s && (e.key === 'Enter' || e.key === ' ')) {
+        e.preventDefault();
+        openEditor(s);
+      }
+    });
+    document.getElementById('new-song')!.addEventListener('click', () => openEditor());
+    document.getElementById('search')!.addEventListener('input', (e) => {
+      search = (e.target as HTMLInputElement).value.trim();
+      render();
+    });
+    document.getElementById('filter')!.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-filter]');
+      if (!btn) return;
+      filter = btn.dataset.filter!;
+      document.querySelectorAll('#filter button').forEach((b) => b.setAttribute('aria-pressed', String(b === btn)));
+      render();
+    });
+
+    ready().then(async () => {
+      await load();
+      const id = new URLSearchParams(location.search).get('song');
+      const s = id && songs.find((x) => x.id === id);
+      if (s) openEditor(s);
+    });
+  </script>
+</AdminLayout>

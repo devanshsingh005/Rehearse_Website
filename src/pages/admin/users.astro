@@ -1,0 +1,251 @@
+---
+import AdminLayout from '../../layouts/AdminLayout.astro';
+---
+
+<AdminLayout title="Users" active="users">
+  <div class="page-head">
+    <div>
+      <h2>Users</h2>
+      <p>Search accounts, see their activity, and suspend or restore access.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-body" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between">
+      <div class="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input class="input" id="search" type="search" placeholder="Search email, username, name or user ID" aria-label="Search users" />
+      </div>
+      <div class="segmented" id="filter" role="group" aria-label="Filter users">
+        <button data-filter="all" aria-pressed="true">All</button>
+        <button data-filter="active" aria-pressed="false">Active 30d</button>
+        <button data-filter="inactive" aria-pressed="false">Inactive</button>
+        <button data-filter="suspended" aria-pressed="false">Suspended</button>
+        <button data-filter="unconfirmed" aria-pressed="false">Unconfirmed</button>
+      </div>
+    </div>
+    <div id="table"></div>
+    <div class="pager" id="pager" hidden>
+      <span id="pager-text"></span>
+      <span class="toolbar">
+        <button class="btn btn-sm" id="prev">Previous</button>
+        <button class="btn btn-sm" id="next">Next</button>
+      </span>
+    </div>
+  </div>
+
+  <script>
+    import { ready } from '../../admin/auth';
+    import { callFunction, rpc } from '../../admin/client';
+    import { busy, confirmDialog, debounce, drawer, esc, fmt, icon, initials, showError, states, toast } from '../../admin/ui';
+
+    interface UserRow {
+      id: string;
+      email: string;
+      username: string | null;
+      full_name: string | null;
+      created_at: string;
+      last_sign_in_at: string | null;
+      last_activity: string | null;
+      email_confirmed_at: string | null;
+      banned_until: string | null;
+      study_seconds: number;
+      uploads: number;
+      current_chapter: number | null;
+    }
+
+    const PAGE = 25;
+    const table = document.getElementById('table')!;
+    const pager = document.getElementById('pager')!;
+    let search = '';
+    let filter = 'all';
+    let offset = 0;
+    let total = 0;
+
+    const isSuspended = (u: { banned_until: string | null }) => !!u.banned_until && new Date(u.banned_until) > new Date();
+
+    function statusBadge(u: UserRow) {
+      if (isSuspended(u)) return `<span class="badge badge-bad">${icon('ban')}Suspended</span>`;
+      if (!u.email_confirmed_at) return '<span class="badge badge-warn">Unconfirmed</span>';
+      if (u.last_activity && Date.now() - new Date(u.last_activity).getTime() < 30 * 864e5) return '<span class="badge badge-good">Active</span>';
+      return '<span class="badge">Inactive</span>';
+    }
+
+    async function load() {
+      table.innerHTML = states.tableSkeleton(8, 6);
+      try {
+        const res = await rpc<{ total: number; rows: UserRow[] }>('admin_list_users', {
+          p_search: search || null,
+          p_filter: filter,
+          p_limit: PAGE,
+          p_offset: offset,
+        });
+        total = res.total;
+        if (!res.rows.length) {
+          table.innerHTML = states.empty(search ? 'No users match that search' : 'No users in this filter', search ? 'Try part of an email address or username.' : '', 'inbox');
+          pager.hidden = true;
+          return;
+        }
+        table.innerHTML = `<div class="table-wrap"><table class="table">
+          <thead><tr><th>User</th><th>Status</th><th class="hide-sm">Joined</th><th>Last active</th><th class="r hide-sm">Practice</th><th class="r hide-sm">Uploads</th></tr></thead>
+          <tbody>${res.rows
+            .map(
+              (u) => `<tr data-clickable data-id="${esc(u.id)}" tabindex="0">
+                <td><div class="song-cell"><span class="avatar">${esc(initials(u.username || u.full_name || u.email))}</span>
+                  <div><div class="cell-main">${esc(u.username || u.full_name || u.email.split('@')[0])}</div><div class="cell-sub">${esc(u.email)}</div></div></div></td>
+                <td>${statusBadge(u)}</td>
+                <td class="hide-sm nowrap">${esc(fmt.date(u.created_at))}</td>
+                <td class="nowrap">${esc(fmt.ago(u.last_activity))}</td>
+                <td class="r num hide-sm">${esc(fmt.duration(u.study_seconds))}</td>
+                <td class="r num hide-sm">${esc(fmt.n(u.uploads))}</td>
+              </tr>`,
+            )
+            .join('')}</tbody></table></div>`;
+        pager.hidden = total <= PAGE;
+        document.getElementById('pager-text')!.textContent = `${offset + 1}–${Math.min(offset + PAGE, total)} of ${fmt.n(total)}`;
+        (document.getElementById('prev') as HTMLButtonElement).disabled = offset === 0;
+        (document.getElementById('next') as HTMLButtonElement).disabled = offset + PAGE >= total;
+      } catch (e) {
+        showError(table, e, load);
+        pager.hidden = true;
+      }
+    }
+
+    async function openUser(id: string) {
+      const d = drawer('Loading…');
+      d.body.innerHTML = '<div class="skeleton sk-chart"></div>';
+      try {
+        const u = await rpc<any>('admin_get_user', { p_user_id: id });
+        const a = u.account;
+        const p = u.profile ?? {};
+        const o = u.onboarding;
+        const suspended = isSuspended(a);
+        d.setTitle(p.username || p.full_name || a.email);
+        d.body.innerHTML = `
+          ${suspended ? `<div class="callout callout-bad">${icon('ban')}<div><strong>Suspended</strong><p>This person can't sign in to the app.</p></div></div>` : ''}
+          <div class="mini-stats">
+            <div class="mini-stat"><b>${esc(fmt.duration(p.total_study_seconds))}</b><span>Practice time</span></div>
+            <div class="mini-stat"><b>${esc(fmt.n(u.counts.lesson_events))}</b><span>Lesson events</span></div>
+            <div class="mini-stat"><b>${esc(fmt.n(u.counts.songs_played))}</b><span>Songs played</span></div>
+            <div class="mini-stat"><b>${esc(fmt.n(u.counts.uploads))}</b><span>Uploads</span></div>
+            <div class="mini-stat"><b>${esc(fmt.n(u.counts.playlists))}</b><span>Playlists</span></div>
+          </div>
+          <section class="drawer-section"><h4>Account</h4><dl class="kv">
+            <dt>Email</dt><dd>${esc(a.email)} ${a.email_confirmed_at ? '<span class="badge badge-good">Confirmed</span>' : '<span class="badge badge-warn">Unconfirmed</span>'}</dd>
+            <dt>User ID</dt><dd class="mono">${esc(a.id)}</dd>
+            <dt>Joined</dt><dd>${esc(fmt.dateTime(a.created_at))}</dd>
+            <dt>Last sign-in</dt><dd>${esc(fmt.dateTime(a.last_sign_in_at))}</dd>
+            <dt>Last practice</dt><dd>${esc(p.last_practice_date ? fmt.date(p.last_practice_date) : 'Never')}</dd>
+          </dl></section>
+          <section class="drawer-section"><h4>Profile</h4><dl class="kv">
+            <dt>Username</dt><dd>${esc(p.username || '—')}</dd>
+            <dt>Name</dt><dd>${esc(p.full_name || '—')}</dd>
+            <dt>Bio</dt><dd>${esc(p.bio || '—')}</dd>
+            <dt>Course progress</dt><dd>Chapter ${esc(p.current_chapter ?? 1)}, part ${esc(p.current_part ?? 0)}</dd>
+            <dt>Onboarding</dt><dd>${o ? `${esc(o.level.replace('_', ' '))} · ${esc(o.practice_mins)} min a day${o.genres?.length ? ` · ${esc(o.genres.join(', '))}` : ''}` : '—'}</dd>
+          </dl></section>
+          <section class="drawer-section"><h4>Recent lessons</h4>${
+            u.recent_lessons.length
+              ? `<div class="list">${u.recent_lessons
+                  .map(
+                    (l: any) => `<div><span>Chapter ${esc(l.chapter_index)} · part ${esc(l.part_index)} · ${esc(String(l.event_type).replace(/_/g, ' '))}${l.stars != null ? ` · ${'★'.repeat(l.stars)}` : ''}</span><span class="muted nowrap">${esc(fmt.ago(l.occurred_at))}</span></div>`,
+                  )
+                  .join('')}</div>`
+              : '<p class="muted">No lessons yet.</p>'
+          }</section>
+          <section class="drawer-section"><h4>Recently played</h4>${
+            u.recent_songs.length
+              ? `<div class="list">${u.recent_songs.map((s: any) => `<div><span>${esc(s.title)}</span><span class="muted nowrap">${esc(fmt.ago(s.last_played_at))}</span></div>`).join('')}</div>`
+              : '<p class="muted">No Discover songs played.</p>'
+          }</section>
+          <section class="drawer-section"><h4>Uploads</h4>${
+            u.uploads.length
+              ? `<div class="list">${u.uploads
+                  .map((x: any) => `<div><span>${esc(x.title)} <span class="muted">· ${esc(fmt.bytes(x.file_size_bytes))}${x.page_count ? ` · ${esc(x.page_count)} pages` : ''}</span></span><span class="muted nowrap">${esc(fmt.date(x.uploaded_at))}</span></div>`)
+                  .join('')}</div><p class="hint" style="margin-top:8px">Upload files stay private to the user and aren't opened here.</p>`
+              : '<p class="muted">No uploads.</p>'
+          }</section>`;
+
+        if (a.is_admin) return;
+        d.foot.hidden = false;
+        d.foot.innerHTML = suspended
+          ? `<button class="btn btn-primary" data-action="unsuspend">${icon('undo')}Restore access</button>`
+          : `<button class="btn btn-danger" data-action="suspend">${icon('ban')}Suspend account</button>`;
+        d.foot.querySelector<HTMLButtonElement>('[data-action]')!.addEventListener('click', async (e) => {
+          const btn = e.currentTarget as HTMLButtonElement;
+          const action = btn.dataset.action as 'suspend' | 'unsuspend';
+          const reason = await confirmDialog(
+            action === 'suspend'
+              ? {
+                  title: `Suspend ${a.email}?`,
+                  body: "They won't be able to sign in or refresh their session. If they're signed in now, the app stops working for them within an hour. You can restore access at any time.",
+                  confirmLabel: 'Suspend',
+                  danger: true,
+                  input: { label: 'Reason (saved in the activity log)', placeholder: 'e.g. abusive uploads', required: true },
+                }
+              : { title: `Restore access for ${a.email}?`, body: 'They will be able to sign in again.', confirmLabel: 'Restore access', input: { label: 'Note (optional)' } },
+          );
+          if (reason === null) return;
+          await busy(btn, async () => {
+            try {
+              await callFunction('admin-users', { action, user_id: a.id, reason });
+              toast(action === 'suspend' ? 'Account suspended' : 'Access restored');
+              d.close();
+              void load();
+            } catch (err) {
+              toast(err instanceof Error ? err.message : String(err), 'error');
+            }
+          });
+        });
+      } catch (e) {
+        d.setTitle('User');
+        showError(d.body, e, () => {
+          d.close();
+          void openUser(id);
+        });
+      }
+    }
+
+    table.addEventListener('click', (e) => {
+      const row = (e.target as HTMLElement).closest<HTMLElement>('tr[data-id]');
+      if (row) void openUser(row.dataset.id!);
+    });
+    table.addEventListener('keydown', (e) => {
+      const row = (e.target as HTMLElement).closest<HTMLElement>('tr[data-id]');
+      if (row && (e.key === 'Enter' || e.key === ' ')) {
+        e.preventDefault();
+        void openUser(row.dataset.id!);
+      }
+    });
+    document.getElementById('search')!.addEventListener(
+      'input',
+      debounce((e: Event) => {
+        search = (e.target as HTMLInputElement).value.trim();
+        offset = 0;
+        void load();
+      }, 300),
+    );
+    document.getElementById('filter')!.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-filter]');
+      if (!btn) return;
+      filter = btn.dataset.filter!;
+      offset = 0;
+      document.querySelectorAll('#filter button').forEach((b) => b.setAttribute('aria-pressed', String(b === btn)));
+      void load();
+    });
+    document.getElementById('prev')!.addEventListener('click', () => {
+      offset = Math.max(0, offset - PAGE);
+      void load();
+    });
+    document.getElementById('next')!.addEventListener('click', () => {
+      offset += PAGE;
+      void load();
+    });
+
+    ready().then(() => {
+      const id = new URLSearchParams(location.search).get('user');
+      void load();
+      if (id) void openUser(id);
+    });
+  </script>
+</AdminLayout>

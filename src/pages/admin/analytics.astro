@@ -1,0 +1,228 @@
+---
+import AdminLayout from '../../layouts/AdminLayout.astro';
+---
+
+<AdminLayout title="Analytics" active="analytics">
+  <div class="page-head">
+    <div>
+      <h2>Analytics</h2>
+      <p>From the app's Firebase Analytics. Google can take 24–48 hours to finish processing a day, so the latest days may rise.</p>
+    </div>
+    <div class="toolbar">
+      <div class="segmented" id="range" role="group" aria-label="Date range">
+        <button data-range="7d" aria-pressed="false">7 days</button>
+        <button data-range="28d" aria-pressed="true">28 days</button>
+        <button data-range="90d" aria-pressed="false">90 days</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="content">
+    <div class="grid grid-tiles">
+      {Array.from({ length: 6 }, () => <div class="card tile"><div class="skeleton sk-line" style="width:50%" /><div class="skeleton sk-value" /><div class="skeleton sk-line" style="width:70%" /></div>)}
+    </div>
+    <div class="card card-body section-gap"><div class="skeleton sk-chart" /></div>
+  </div>
+
+  <script>
+    import { ready } from '../../admin/auth';
+    import { callFunction } from '../../admin/client';
+    import { esc, fmt, icon, showError } from '../../admin/ui';
+    import { barList, lineChart, segmentBar } from '../../admin/charts';
+
+    type Row = Record<string, string | number>;
+    interface Analytics {
+      connected: boolean;
+      missing?: string[];
+      error?: string;
+      range: string;
+      generated_at: string;
+      active: Row;
+      totals: Row;
+      trend: Row[];
+      screens: Row[];
+      events: Row[];
+      countries: Row[];
+      new_vs_returning: Row[];
+      app_versions: Row[];
+      devices: Row[];
+      realtime_active: number | null;
+      retention: Row[] | null;
+    }
+
+    // Custom events the iOS app sends today (Services/AnalyticsManager.swift).
+    const APP_EVENTS = new Set([
+      'login_started', 'signup_started', 'login_failed', 'signup_failed', 'login_success',
+      'otp_sent', 'otp_resent', 'otp_verified', 'playlist_created', 'playlist_opened',
+      'track_added_to_playlist', 'upload_started', 'upload_completed', 'upload_failed',
+    ]);
+
+    const content = document.getElementById('content')!;
+    let range = '28d';
+
+    const tile = (label: string, value: string, sub = '', live = false) =>
+      `<div class="card tile"><span class="tile-label">${live ? '<i class="live-dot"></i>' : ''}${esc(label)}</span><span class="tile-value">${esc(value)}</span><span class="tile-sub">${esc(sub)}</span></div>`;
+
+    function setup(missing: string[]) {
+      content.innerHTML = `
+        <div class="card" style="max-width:760px">
+          <div class="card-head"><div><h3>Connect Firebase Analytics</h3><p>One-time setup, about 5 minutes. The key stays in Supabase and never reaches the browser.</p></div>
+            <span class="badge badge-warn">Not connected</span></div>
+          <div class="card-body stack">
+            <ol class="steps">
+              <li><div><strong>Find the property ID.</strong> In the Firebase console open Project settings → Integrations → Google Analytics → Manage. In Google Analytics go to Admin → Property details and copy the number labelled Property ID.</div></li>
+              <li><div><strong>Turn on the API.</strong> In the Google Cloud console, with the same project as Firebase selected, open APIs &amp; Services → Library, search for “Google Analytics Data API” and click Enable.</div></li>
+              <li><div><strong>Create a service account.</strong> Open IAM &amp; Admin → Service accounts → Create service account. Give it a name like “rehearse-admin-analytics” and skip the optional role steps. Open it, go to Keys → Add key → Create new key → JSON. A file downloads.</div></li>
+              <li><div><strong>Give it read access.</strong> In Google Analytics go to Admin → Property access management → + → Add users. Paste the service account's email (it ends in .iam.gserviceaccount.com), choose the Viewer role, untick “Notify”, and add.</div></li>
+              <li><div><strong>Add two secrets in Supabase.</strong> Open the Supabase dashboard → Edge Functions → Secrets and add:
+                <div class="kv" style="margin-top:8px"><dt class="mono">GA_PROPERTY_ID</dt><dd>the number from step 1</dd><dt class="mono">GA_SERVICE_ACCOUNT_KEY</dt><dd>the entire contents of the JSON file from step 3</dd></div></div></li>
+              <li><div>Delete the downloaded JSON file from your computer, then reload this page.</div></li>
+            </ol>
+            <p class="hint">Missing now: ${missing.map((m) => `<span class="mono">${esc(m)}</span>`).join(', ')}</p>
+          </div>
+        </div>`;
+    }
+
+    function retentionTable(rows: Row[]) {
+      if (!rows.length) return '<p class="muted">Not enough data yet.</p>';
+      const cohorts = [...new Set(rows.map((r) => String(r.cohort)))].sort().reverse();
+      const weeks = [...new Set(rows.map((r) => Number(r.cohortNthWeek)))].sort((a, b) => a - b);
+      const value = (c: string, w: number) => Number(rows.find((r) => r.cohort === c && Number(r.cohortNthWeek) === w)?.cohortActiveUsers ?? 0);
+      return `<div class="table-wrap"><table class="table heat">
+        <thead><tr><th>First opened</th><th class="r">Users</th>${weeks.map((w) => `<th class="r">Week ${w}</th>`).join('')}</tr></thead>
+        <tbody>${cohorts
+          .map((c) => {
+            const weeksAgo = Number(c.replace('week_', ''));
+            const base = value(c, 0);
+            return `<tr><td class="nowrap">${weeksAgo} week${weeksAgo > 1 ? 's' : ''} ago</td><td class="r num">${fmt.n(base)}</td>${weeks
+              .map((w) => {
+                if (w > weeksAgo) return '<td></td>';
+                const share = base ? value(c, w) / base : 0;
+                return `<td class="cell r" style="background:color-mix(in srgb, var(--series-1) ${Math.round(share * 55)}%, transparent)" title="${fmt.n(value(c, w))} users">${base ? fmt.pct(share) : '—'}</td>`;
+              })
+              .join('')}</tr>`;
+          })
+          .join('')}</tbody></table></div><p class="hint" style="margin-top:8px">Share of each week's new users who came back in later weeks.</p>`;
+    }
+
+    function render(a: Analytics) {
+      const t = a.totals;
+      const active = Number(t.activeUsers) || 0;
+      const nvr = Object.fromEntries(a.new_vs_returning.map((r) => [String(r.newVsReturning), Number(r.activeUsers)]));
+      const days = { '7d': 7, '28d': 28, '90d': 90 }[a.range] ?? 28;
+      content.innerHTML = `
+        <div class="grid grid-tiles">
+          ${tile('Active right now', a.realtime_active == null ? '—' : fmt.n(a.realtime_active), 'last 30 minutes', true)}
+          ${tile('Daily active', fmt.n(a.active.active1DayUsers), 'today so far')}
+          ${tile('Weekly active', fmt.n(a.active.active7DayUsers), 'last 7 days')}
+          ${tile('Monthly active', fmt.n(a.active.active28DayUsers), 'last 28 days')}
+          ${tile('New users', fmt.n(t.newUsers), `first opened in the last ${days} days`)}
+          ${tile('Avg. engagement', fmt.duration(active ? Number(t.userEngagementDuration) / active : 0), `per active user · ${fmt.n(t.sessions)} sessions`)}
+        </div>
+
+        <div class="grid grid-main section-gap">
+          <div class="card">
+            <div class="card-head"><div><h3>Users over time</h3><p>Active and new users per day</p></div></div>
+            <div class="card-body" id="trend"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><div><h3>New vs returning</h3><p>Active users in this period</p></div></div>
+            <div class="card-body stack">
+              <div id="nvr"></div>
+              <div><div class="field-label" style="margin-bottom:8px">App versions in use</div><div id="versions"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-2 section-gap">
+          <div class="card">
+            <div class="card-head"><div><h3>Countries</h3><p>Active users</p></div></div>
+            <div class="card-body" id="countries"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><div><h3>Top screens</h3><p>Screen views</p></div></div>
+            <div class="card-body" id="screens"></div>
+          </div>
+        </div>
+
+        <div class="grid grid-main section-gap">
+          <div class="card card-flush">
+            <div class="card-head" style="padding-bottom:12px"><div><h3>Events</h3><p>“Rehearse” events are sent by the app; others are collected by Firebase automatically.</p></div></div>
+            <div class="table-wrap" style="max-height:460px"><table class="table">
+              <thead><tr><th>Event</th><th class="r">Count</th><th class="r">Users</th></tr></thead>
+              <tbody>${a.events
+                .map(
+                  (e) => `<tr><td><span class="mono">${esc(e.eventName)}</span> ${APP_EVENTS.has(String(e.eventName)) ? '<span class="badge badge-accent">Rehearse</span>' : ''}</td><td class="r num">${fmt.n(e.eventCount)}</td><td class="r num">${fmt.n(e.totalUsers)}</td></tr>`,
+                )
+                .join('') || '<tr><td colspan="3" class="muted">No events in this period.</td></tr>'}</tbody></table></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><div><h3>Not tracked in Firebase yet</h3><p>The app doesn't send these events</p></div></div>
+            <div class="card-body stack">
+              <ul class="steps plain" style="list-style:none">
+                <li>Lesson started / completed</li>
+                <li>Discover song opened or played</li>
+                <li>Play-along practice session</li>
+                <li>Daily goal reached</li>
+              </ul>
+              <div class="callout">${icon('info')}<div><p>Practice numbers are on the <a href="/admin/">Overview</a> page, read from the Rehearse database. Adding these events to the app later would make them visible here too.</p></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-main section-gap">
+          <div class="card">
+            <div class="card-head"><div><h3>Retention</h3><p>Weekly cohorts by first open</p></div></div>
+            <div class="card-body">${a.retention ? retentionTable(a.retention) : '<p class="muted">Retention isn\'t available for this property yet.</p>'}</div>
+          </div>
+          <div class="card">
+            <div class="card-head"><div><h3>Devices</h3><p>Active users</p></div></div>
+            <div class="card-body" id="devices"></div>
+          </div>
+        </div>
+        <p class="hint section-gap">Fetched ${esc(fmt.dateTime(a.generated_at))}. Results are cached for 10 minutes.</p>`;
+
+      const trend = a.trend.map((r) => ({ ...r, day: String(r.date).replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3') }));
+      lineChart(document.getElementById('trend')!, trend, {
+        x: 'day',
+        series: [
+          { key: 'activeUsers', label: 'Active users', color: 'var(--series-1)' },
+          { key: 'newUsers', label: 'New users', color: 'var(--series-2)' },
+        ],
+        ariaLabel: 'Active and new users per day',
+      });
+      segmentBar(document.getElementById('nvr')!, [
+        { label: 'Returning', value: nvr.returning ?? 0, color: 'var(--series-1)' },
+        { label: 'New', value: nvr.new ?? 0, color: 'var(--series-2)' },
+      ]);
+      barList(document.getElementById('versions')!, a.app_versions.map((r) => ({ label: `Version ${r.appVersion}`, value: Number(r.activeUsers) })));
+      barList(document.getElementById('countries')!, a.countries.map((r) => ({ label: String(r.country || 'Unknown'), value: Number(r.activeUsers) })));
+      barList(
+        document.getElementById('screens')!,
+        a.screens.map((r) => ({ label: String(r.unifiedScreenName || '(not set)'), value: Number(r.screenPageViews) })),
+      );
+      barList(document.getElementById('devices')!, a.devices.map((r) => ({ label: String(r.deviceCategory).replace(/^./, (c) => c.toUpperCase()), value: Number(r.activeUsers) })));
+    }
+
+    async function load() {
+      try {
+        const a = await callFunction<Analytics>('admin-analytics', { range });
+        if (!a.connected) return setup(a.missing ?? []);
+        if (a.error) throw new Error(a.error);
+        render(a);
+      } catch (e) {
+        showError(content, e, load);
+      }
+    }
+
+    document.getElementById('range')!.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-range]');
+      if (!btn) return;
+      range = btn.dataset.range!;
+      document.querySelectorAll('#range button').forEach((b) => b.setAttribute('aria-pressed', String(b === btn)));
+      void load();
+    });
+
+    ready().then(load);
+  </script>
+</AdminLayout>

@@ -1,0 +1,216 @@
+---
+import AdminLayout from '../../layouts/AdminLayout.astro';
+---
+
+<AdminLayout title="Theme Studio" active="theme-studio">
+  <div class="page-head">
+    <div>
+      <h2>Theme Studio</h2>
+      <p>Seasonal decorations for the iOS app. A theme only adds art: the app's colours, layout and controls stay exactly the same. The app picks up a change when it opens, when it comes back to the foreground, and every 2 minutes while open.</p>
+    </div>
+  </div>
+
+  <div class="callout" style="margin-bottom:16px">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+    <div>
+      <p><strong>Only version 1.1 and later show themes.</strong> People on 1.0 always see the default look, whatever you publish.</p>
+    </div>
+  </div>
+
+  <div id="content">
+    <div class="grid grid-main">
+      <div class="card card-body"><div class="skeleton sk-chart" /></div>
+      <div class="card card-body"><div class="skeleton sk-chart" /></div>
+    </div>
+  </div>
+
+  <script>
+    import { ready } from '../../admin/auth';
+    import { rpc, supabase } from '../../admin/client';
+    import { busy, confirmDialog, esc, fmt, icon, showError, toast } from '../../admin/ui';
+    import { ART, themePhone, type PreviewScreen } from '../../admin/theme-preview';
+
+    type Theme = 'default' | 'christmas';
+    interface Config {
+      theme?: Theme;
+      version: number;
+      updated_at: string;
+    }
+    interface HistoryRow {
+      id: number;
+      version: number;
+      config: { theme?: Theme };
+      changed_by_email: string | null;
+      note: string | null;
+      created_at: string;
+    }
+
+    const THEMES: Record<Theme, { name: string; about: string }> = {
+      default: { name: 'Default', about: 'The everyday look, with no decorations.' },
+      christmas: {
+        name: 'Christmas',
+        about: 'Pine branches, a Santa hat and a snowy scene on Home, snow on playlist covers, decorations on Library and Search, holly at the edges of the piano player, and light snowfall on Home.',
+      },
+    };
+    const themeOf = (v: unknown): Theme => (v === 'christmas' ? 'christmas' : 'default');
+
+    const content = document.getElementById('content')!;
+    let current: Config;
+    let selected: Theme = 'default';
+    let screen: PreviewScreen = 'home';
+    let dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+    function renderPreview() {
+      content.querySelector('#ts-preview')!.innerHTML = themePhone({ christmas: selected === 'christmas', dark, screen });
+      const live = themeOf(current.theme);
+      content.querySelector('#ts-preview-label')!.innerHTML =
+        selected === live
+          ? `<span class="badge badge-good">${icon('check')}Live</span>`
+          : '<span class="badge badge-warn">Not published</span>';
+    }
+
+    function render(history: HistoryRow[]) {
+      const live = themeOf(current.theme);
+      // history rows where the theme changed (the oldest row counts as a change)
+      const asc = [...history].sort((a, b) => a.version - b.version);
+      const changes = asc
+        .filter((h, i) => i === 0 || themeOf(h.config.theme) !== themeOf(asc[i - 1].config.theme))
+        .reverse();
+
+      content.innerHTML = `
+        <div class="grid grid-main" style="margin-bottom:16px">
+          <div class="card">
+            <div class="card-head"><div><h3>Theme</h3><p>Published version ${esc(current.version)} · ${esc(fmt.dateTime(current.updated_at))}</p></div>
+              <span class="badge ${live === 'christmas' ? 'badge-accent' : ''}">Live: ${esc(THEMES[live].name)}</span></div>
+            <div class="card-body stack">
+              <div class="ts-choices" role="radiogroup" aria-label="Theme">
+                ${(Object.keys(THEMES) as Theme[])
+                  .map(
+                    (t) => `<label class="ts-choice">
+                      <input type="radio" name="theme" value="${t}" ${t === selected ? 'checked' : ''}>
+                      <span class="ts-choice-art ts-choice-${t}" aria-hidden="true">${t === 'christmas' ? `<img src="${ART}/xmas-pine-branch.svg" alt=""><img src="${ART}/xmas-santa-hat.svg" alt="">` : ''}</span>
+                      <span class="ts-choice-text"><b>${esc(THEMES[t].name)}${t === live ? ' <span class="badge badge-good">Live</span>' : ''}</b><span>${esc(THEMES[t].about)}</span></span>
+                    </label>`,
+                  )
+                  .join('')}
+              </div>
+              <p class="hint">Snowfall stops when someone has Reduce Motion or Low Power Mode on, and the decorations never cover sheet music, the piano keys or any control.</p>
+              <div style="display:flex;gap:8px;justify-content:flex-end">
+                <button type="button" class="btn" id="ts-reset">Reset</button>
+                <button type="button" class="btn btn-primary" id="ts-publish">Publish</button>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-head"><div><h3>Preview</h3><p>What people see in the app</p></div><span id="ts-preview-label"></span></div>
+            <div class="card-body stack">
+              <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between">
+                <div class="segmented" id="ts-screens" role="group" aria-label="Screen">
+                  ${(['home', 'library', 'search', 'player'] as const).map((s) => `<button data-screen="${s}" aria-pressed="${s === screen}">${{ home: 'Home', library: 'Library', search: 'Search', player: 'Piano' }[s]}</button>`).join('')}
+                </div>
+                <div class="segmented" id="ts-mode" role="group" aria-label="Appearance">
+                  <button data-dark="0" aria-pressed="${!dark}">Light</button><button data-dark="1" aria-pressed="${dark}">Dark</button>
+                </div>
+              </div>
+              <div id="ts-preview"></div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div><h3>History</h3><p>Each time the theme changed. Switching back publishes that theme again; versions and maintenance aren't touched.</p></div></div>
+          <div class="table-wrap"><table class="table">
+            <thead><tr><th>Version</th><th>Theme</th><th class="hide-sm">Published by</th><th>When</th><th class="r"></th></tr></thead>
+            <tbody>${changes
+              .map((h) => {
+                const t = themeOf(h.config.theme);
+                return `<tr>
+                  <td><span class="cell-main">v${esc(h.version)}</span>${h.note ? `<div class="cell-sub">${esc(h.note)}</div>` : ''}</td>
+                  <td>${t === 'christmas' ? '<span class="badge badge-accent">Christmas</span>' : '<span class="muted">Default</span>'}</td>
+                  <td class="hide-sm">${esc(h.changed_by_email ?? 'Setup')}</td>
+                  <td class="nowrap">${esc(fmt.dateTime(h.created_at))}</td>
+                  <td class="r">${t === live ? '' : `<button class="btn btn-sm btn-ghost" data-switch="${t}">${icon('undo')}Switch back</button>`}</td>
+                </tr>`;
+              })
+              .join('')}</tbody></table></div>
+        </div>`;
+
+      const publishBtn = content.querySelector<HTMLButtonElement>('#ts-publish')!;
+      const sync = () => {
+        publishBtn.disabled = selected === live;
+        renderPreview();
+      };
+      content.querySelectorAll<HTMLInputElement>('input[name="theme"]').forEach((r) =>
+        r.addEventListener('change', () => {
+          selected = themeOf(r.value);
+          sync();
+        }),
+      );
+      content.querySelector('#ts-screens')!.addEventListener('click', (e) => {
+        const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-screen]');
+        if (!btn) return;
+        screen = btn.dataset.screen as typeof screen;
+        content.querySelectorAll('#ts-screens button').forEach((b) => b.setAttribute('aria-pressed', String(b === btn)));
+        renderPreview();
+      });
+      content.querySelector('#ts-mode')!.addEventListener('click', (e) => {
+        const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-dark]');
+        if (!btn) return;
+        dark = btn.dataset.dark === '1';
+        content.querySelectorAll('#ts-mode button').forEach((b) => b.setAttribute('aria-pressed', String(b === btn)));
+        renderPreview();
+      });
+      content.querySelector('#ts-reset')!.addEventListener('click', () => {
+        selected = live;
+        render(history);
+      });
+      publishBtn.addEventListener('click', () => void publish(selected, publishBtn));
+      content.querySelectorAll<HTMLButtonElement>('[data-switch]').forEach((btn) =>
+        btn.addEventListener('click', () => void publish(themeOf(btn.dataset.switch), btn)),
+      );
+      sync();
+    }
+
+    async function publish(theme: Theme, btn: HTMLButtonElement) {
+      if (theme === themeOf(current.theme)) return toast('That theme is already live.', 'info');
+      const note = await confirmDialog({
+        title: `Switch the app to ${THEMES[theme].name}?`,
+        body:
+          theme === 'christmas'
+            ? 'Everyone on version 1.1 or later sees the Christmas decorations within about 2 minutes, or the next time they open the app. Colours and layout stay the same. It stays on until you switch back to Default.'
+            : 'The Christmas decorations go away for everyone on version 1.1 or later within about 2 minutes, or the next time they open the app.',
+        confirmLabel: `Publish ${THEMES[theme].name}`,
+        input: { label: 'Note (optional)', placeholder: theme === 'christmas' ? 'e.g. Christmas 2026' : 'e.g. after the holidays' },
+      });
+      if (note === null) return;
+      await busy(btn, async () => {
+        try {
+          await rpc('admin_set_theme', { p_theme: theme, p_expected_version: current.version, p_note: note || null });
+          toast(`${THEMES[theme].name} theme published`);
+          selected = theme;
+          void load();
+        } catch (err) {
+          toast(err instanceof Error ? err.message : String(err), 'error');
+        }
+      });
+    }
+
+    async function load() {
+      try {
+        const [cfg, hist] = await Promise.all([
+          supabase.from('app_config').select('theme, version, updated_at').eq('platform', 'ios').single(),
+          supabase.from('app_config_history').select('id, version, config, changed_by_email, note, created_at').eq('platform', 'ios').order('version', { ascending: false }).limit(100),
+        ]);
+        if (cfg.error) throw new Error(cfg.error.message);
+        if (hist.error) throw new Error(hist.error.message);
+        const first = !current;
+        current = cfg.data as Config;
+        if (first) selected = themeOf(current.theme);
+        render(hist.data as HistoryRow[]);
+      } catch (e) {
+        showError(content, e, load);
+      }
+    }
+
+    ready().then(load);
+  </script>
+</AdminLayout>

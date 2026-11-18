@@ -39,13 +39,14 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
       maintenance_title: string;
       maintenance_message: string;
       maintenance_ends_at: string | null;
+      theme?: 'default' | 'christmas';
       version: number;
       updated_at: string;
     }
     interface HistoryRow {
       id: number;
       version: number;
-      config: Omit<Config, 'platform' | 'version' | 'updated_at' | 'maintenance_enabled'> & { maintenance_enabled?: boolean };
+      config: Omit<Config, 'platform' | 'version' | 'updated_at' | 'maintenance_enabled' | 'theme'> & { maintenance_enabled?: boolean; theme?: 'default' | 'christmas' };
       changed_by_email: string | null;
       note: string | null;
       created_at: string;
@@ -374,6 +375,10 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
                 ? h.config.maintenance_enabled
                   ? ' It also TURNS ON maintenance mode, blocking the app for everyone on 1.1 or later.'
                   : ' It also turns maintenance mode off.'
+                : ''
+            }${
+              (h.config.theme ?? 'default') !== (c.theme ?? 'default')
+                ? ` The app theme also changes to ${h.config.theme === 'christmas' ? 'Christmas' : 'Default'}.`
                 : ''
             }`,
             confirmLabel: 'Roll back',

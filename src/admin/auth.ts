@@ -77,6 +77,14 @@ async function check(): Promise<AdminSession> {
     return goToLogin('idle');
   }
 
+  // Ask the auth server, not just local storage: a session can be ended elsewhere (for example,
+  // adding a phone signs out every other session) while its token still looks valid here.
+  const { error: userError } = await supabase.auth.getUser();
+  if (userError) {
+    await supabase.auth.signOut({ scope: 'local' });
+    return goToLogin('ended');
+  }
+
   const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
   if (aal?.currentLevel !== 'aal2') return goToLogin();
 

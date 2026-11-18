@@ -1,0 +1,267 @@
+---
+import AdminLayout from '../../layouts/AdminLayout.astro';
+
+// Stamped at build time: GitHub Actions sets GITHUB_SHA when it builds the site.
+const commit = (process.env.GITHUB_SHA ?? '').slice(0, 7) || 'local build';
+const builtAt = new Date().toISOString();
+---
+
+<AdminLayout title="System" active="system">
+  <div class="page-head">
+    <div>
+      <h2>System settings</h2>
+      <p>Whether every service Rehearse depends on is connected and working, plus database, storage and build information.</p>
+    </div>
+    <div class="toolbar">
+      <button class="btn" id="recheck">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+        Run checks again
+      </button>
+    </div>
+  </div>
+
+  <div id="content" data-commit={commit} data-built-at={builtAt}>
+    <div class="grid grid-tiles">
+      {Array.from({ length: 5 }, () => <div class="card tile"><div class="skeleton sk-line" style="width:50%" /><div class="skeleton sk-value" /><div class="skeleton sk-line" style="width:70%" /></div>)}
+    </div>
+    <div class="card card-body section-gap"><div class="skeleton sk-chart" /></div>
+  </div>
+
+  <script>
+    import { ready } from '../../admin/auth';
+    import { APP_STORE_ID, APP_STORE_URL, SUPABASE_URL, callFunction, rpc } from '../../admin/client';
+    import { esc, fmt, icon, showError } from '../../admin/ui';
+
+    const PROJECT_REF = new URL(SUPABASE_URL).hostname.split('.')[0];
+    const FIREBASE_PROJECT = 'rehearse-e8285';
+    const FUNCTIONS = [
+      { name: 'admin-users', use: 'Suspends and restores accounts' },
+      { name: 'admin-analytics', use: 'Reads Firebase Analytics' },
+    ];
+
+    type Health = 'ok' | 'warn' | 'bad' | 'off';
+    interface Check {
+      name: string;
+      detail: string;
+      health: Health;
+      label: string;
+      link?: { href: string; text: string };
+    }
+
+    const content = document.getElementById('content')!;
+    const commit = content.dataset.commit!;
+    const builtAt = content.dataset.builtAt!;
+
+    const BADGE: Record<Health, string> = { ok: 'badge-good', warn: 'badge-warn', bad: 'badge-bad', off: '' };
+    const ICON: Record<Health, string> = { ok: 'checkCircle', warn: 'alert', bad: 'alert', off: 'info' };
+
+    /** "20261118094313" → "Nov 18, 2026" */
+    function migrationDate(version: string): string {
+      const m = version.match(/^(\d{4})(\d{2})(\d{2})/);
+      return m ? fmt.date(`${m[1]}-${m[2]}-${m[3]}T12:00:00Z`) : version;
+    }
+
+    async function timed<T>(task: () => Promise<T>): Promise<{ value?: T; error?: unknown; ms: number }> {
+      const start = performance.now();
+      try {
+        const value = await task();
+        return { value, ms: Math.round(performance.now() - start) };
+      } catch (error) {
+        return { error, ms: Math.round(performance.now() - start) };
+      }
+    }
+
+    async function pingFunction(name: string) {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/${name}`, { method: 'OPTIONS' });
+      if (!res.ok) throw new Error(`Responded ${res.status}`);
+    }
+
+    async function storeVersion(): Promise<{ version: string; released: string } | null> {
+      const res = await fetch(`https://itunes.apple.com/lookup?id=${APP_STORE_ID}&t=${Date.now()}`);
+      const r = (await res.json()).results?.[0];
+      return r ? { version: r.version, released: r.currentVersionReleaseDate } : null;
+    }
+
+    function checkRow(c: Check) {
+      return `<tr>
+        <td><div class="cell-main">${esc(c.name)}</div><div class="cell-sub">${esc(c.detail)}</div></td>
+        <td class="nowrap"><span class="badge ${BADGE[c.health]}">${icon(ICON[c.health])}${esc(c.label)}</span></td>
+        <td class="r hide-sm">${c.link ? `<a class="btn btn-sm btn-ghost" href="${esc(c.link.href)}" target="_blank" rel="noopener noreferrer">${esc(c.link.text)}${icon('external')}</a>` : ''}</td>
+      </tr>`;
+    }
+
+    async function load() {
+      content.innerHTML = `<div class="card card-body"><div class="skeleton sk-chart"></div></div>`;
+      try {
+        const [db, analytics, store, ...fns] = await Promise.all([
+          timed(() => rpc<any>('admin_system_status')),
+          timed(() => callFunction<any>('admin-analytics', { status: true })),
+          timed(storeVersion),
+          ...FUNCTIONS.map((f) => timed(() => pingFunction(f.name))),
+        ]);
+        if (db.error) throw db.error;
+        const s = db.value;
+        const cfg = s.app_config;
+        const a = analytics.value;
+
+        const checks: Check[] = [
+          {
+            name: 'Supabase database',
+            detail: `${s.database.version} · ${fmt.bytes(s.database.size_bytes)} · answered in ${db.ms} ms`,
+            health: 'ok',
+            label: 'Working',
+            link: { href: `https://supabase.com/dashboard/project/${PROJECT_REF}`, text: 'Supabase' },
+          },
+          {
+            name: 'Supabase Auth',
+            detail: `${fmt.n(s.auth.users)} accounts · ${fmt.n(s.auth.signups_24h)} new in 24 h · admin sign-in needs an authenticator`,
+            health: 'ok',
+            label: 'Working',
+            link: { href: `https://supabase.com/dashboard/project/${PROJECT_REF}/auth/users`, text: 'Users' },
+          },
+          ...FUNCTIONS.map((f, i): Check => ({
+            name: `Edge Function: ${f.name}`,
+            detail: fns[i].error ? `${f.use} · ${String((fns[i].error as Error).message ?? fns[i].error)}` : `${f.use} · answered in ${fns[i].ms} ms`,
+            health: fns[i].error ? 'bad' : 'ok',
+            label: fns[i].error ? 'Not reachable' : 'Reachable',
+            link: { href: `https://supabase.com/dashboard/project/${PROJECT_REF}/functions/${f.name}`, text: 'Logs' },
+          })),
+          analytics.error
+            ? { name: 'Firebase Analytics', detail: String((analytics.error as Error).message ?? analytics.error), health: 'bad', label: 'Check failed' }
+            : !a.connected
+              ? {
+                  name: 'Firebase Analytics',
+                  detail: `Missing secrets: ${(a.missing ?? []).join(', ')}. Setup steps are on the Analytics page.`,
+                  health: 'off',
+                  label: 'Not connected',
+                  link: { href: `https://supabase.com/dashboard/project/${PROJECT_REF}/functions/secrets`, text: 'Secrets' },
+                }
+              : a.ok
+                ? {
+                    name: 'Firebase Analytics',
+                    detail: `Property ${a.property_id} · read as ${a.service_account}`,
+                    health: 'ok',
+                    label: 'Connected',
+                    link: { href: `https://analytics.google.com/analytics/web/#/p${a.property_id}/reports/intelligenthome`, text: 'Google Analytics' },
+                  }
+                : {
+                    name: 'Firebase Analytics',
+                    detail: `Property ${a.property_id}: ${a.error}`,
+                    health: 'bad',
+                    label: 'Error',
+                    link: { href: `https://supabase.com/dashboard/project/${PROJECT_REF}/functions/secrets`, text: 'Secrets' },
+                  },
+          store.value
+            ? {
+                name: 'App Store listing',
+                detail: `Version ${store.value.version}, released ${fmt.date(store.value.released)}`,
+                health: 'ok',
+                label: 'Live',
+                link: { href: APP_STORE_URL, text: 'App Store' },
+              }
+            : { name: 'App Store listing', detail: "Couldn't reach Apple's lookup service.", health: 'warn', label: 'Unknown' },
+          {
+            name: 'App config',
+            detail: cfg.maintenance_enabled
+              ? `Maintenance mode is ON · published v${cfg.version}`
+              : `Minimum ${cfg.min_supported_version}, latest ${cfg.latest_version} · published v${cfg.version} ${fmt.ago(cfg.updated_at)}`,
+            health: cfg.maintenance_enabled ? 'bad' : 'ok',
+            label: cfg.maintenance_enabled ? 'Maintenance on' : 'Normal',
+            link: { href: '/admin/app-config/', text: 'App config' },
+          },
+        ];
+
+        const problems = checks.filter((c) => c.health === 'bad' || c.health === 'warn').length;
+        const tablesWithoutRls = s.database.tables.filter((t: any) => !t.rls);
+        const storageBytes = s.storage.reduce((sum: number, b: any) => sum + Number(b.bytes), 0);
+        const storageFiles = s.storage.reduce((sum: number, b: any) => sum + Number(b.files), 0);
+
+        content.innerHTML = `
+          <div class="grid grid-tiles">
+            <div class="card tile"><span class="tile-label">Status</span><span class="tile-value">${problems ? `${problems} issue${problems > 1 ? 's' : ''}` : 'All good'}</span><span class="tile-sub">Checked ${esc(fmt.dateTime(s.checked_at))}</span></div>
+            <div class="card tile"><span class="tile-label">Database</span><span class="tile-value">${esc(fmt.bytes(s.database.size_bytes))}</span><span class="tile-sub">${esc(s.database.tables.length)} tables · ${esc(s.database.version)}</span></div>
+            <div class="card tile"><span class="tile-label">Storage</span><span class="tile-value">${esc(fmt.bytes(storageBytes))}</span><span class="tile-sub">${esc(fmt.n(storageFiles))} files in ${esc(s.storage.length)} buckets</span></div>
+            <div class="card tile"><span class="tile-label">Accounts</span><span class="tile-value">${esc(fmt.n(s.auth.users))}</span><span class="tile-sub">${esc(fmt.n(s.auth.confirmed))} confirmed email</span></div>
+            <div class="card tile"><span class="tile-label">Activity log</span><span class="tile-value">${esc(fmt.n(s.audit.entries))}</span><span class="tile-sub">${s.audit.last_at ? `last change ${esc(fmt.ago(s.audit.last_at))}` : 'no changes yet'}</span></div>
+          </div>
+
+          <div class="card section-gap card-flush">
+            <div class="card-head" style="padding-bottom:12px"><div><h3>Services</h3><p>Checked live from this browser just now</p></div></div>
+            <div class="table-wrap"><table class="table"><tbody>${checks.map(checkRow).join('')}</tbody></table></div>
+          </div>
+
+          <div class="grid grid-2 section-gap">
+            <div class="card card-flush">
+              <div class="card-head" style="padding-bottom:12px"><div><h3>Database tables</h3><p>${tablesWithoutRls.length ? `${tablesWithoutRls.length} without row-level security` : 'Row-level security is on for every table'}</p></div></div>
+              <div class="table-wrap" style="max-height:420px"><table class="table">
+                <thead><tr><th>Table</th><th class="r">Rows</th><th class="r">Size</th><th>Security</th></tr></thead>
+                <tbody>${s.database.tables
+                  .map(
+                    (t: any) => `<tr><td class="mono">${esc(t.name)}</td><td class="r num">${esc(fmt.n(t.rows))}</td><td class="r num nowrap">${esc(fmt.bytes(t.bytes))}</td>
+                      <td>${t.rls ? '<span class="badge badge-good">RLS on</span>' : '<span class="badge badge-bad">RLS off</span>'}</td></tr>`,
+                  )
+                  .join('')}</tbody></table></div>
+            </div>
+            <div class="stack">
+              <div class="card card-flush">
+                <div class="card-head" style="padding-bottom:12px"><div><h3>Storage buckets</h3><p>Files in Supabase Storage</p></div></div>
+                <div class="table-wrap"><table class="table">
+                  <thead><tr><th>Bucket</th><th>Access</th><th class="r">Files</th><th class="r">Size</th></tr></thead>
+                  <tbody>${s.storage
+                    .map(
+                      (b: any) => `<tr><td><span class="mono">${esc(b.id)}</span>${b.file_size_limit ? `<div class="cell-sub">Up to ${esc(fmt.bytes(b.file_size_limit))} a file</div>` : ''}</td>
+                        <td>${b.public ? '<span class="badge badge-info">Public</span>' : '<span class="badge">Private</span>'}</td>
+                        <td class="r num">${esc(fmt.n(b.files))}</td><td class="r num nowrap">${esc(fmt.bytes(b.bytes))}</td></tr>`,
+                    )
+                    .join('')}</tbody></table></div>
+              </div>
+              <div class="card">
+                <div class="card-head"><div><h3>Admins</h3><p>Accounts with dashboard access</p></div></div>
+                <div class="card-body"><div class="list">${s.auth.admins
+                  .map(
+                    (ad: any) => `<div><span>${esc(ad.email)} <span class="muted">· ${esc(ad.phones)} phone${ad.phones === 1 ? '' : 's'}</span></span><span class="muted nowrap">signed in ${esc(fmt.ago(ad.last_sign_in_at))}</span></div>`,
+                  )
+                  .join('')}</div>
+                  <p class="hint" style="margin-top:8px">Manage your phones on the <a href="/admin/security/">Security</a> page.</p></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-2 section-gap">
+            <div class="card">
+              <div class="card-head"><div><h3>System information</h3></div></div>
+              <div class="card-body"><dl class="kv">
+                <dt>Dashboard build</dt><dd><span class="mono">${esc(commit)}</span> · ${esc(fmt.dateTime(builtAt))}</dd>
+                <dt>Supabase project</dt><dd class="mono">${esc(PROJECT_REF)}</dd>
+                <dt>Firebase project</dt><dd class="mono">${esc(FIREBASE_PROJECT)}</dd>
+                <dt>App Store ID</dt><dd class="mono">${esc(APP_STORE_ID)}</dd>
+                <dt>Database time zone</dt><dd>${esc(s.database.timezone)}</dd>
+                <dt>Your time zone</dt><dd>${esc(Intl.DateTimeFormat().resolvedOptions().timeZone)}</dd>
+                <dt>Latest migrations</dt><dd>${s.database.migrations.map((m: any) => `<div style="margin-bottom:4px">${esc(String(m.name ?? '').replace(/_/g, ' '))}<div class="cell-sub">${esc(migrationDate(String(m.version)))}</div></div>`).join('')}</dd>
+              </dl></div>
+            </div>
+            <div class="card">
+              <div class="card-head"><div><h3>Quick links</h3></div></div>
+              <div class="card-body"><div class="list">${[
+                ['Supabase dashboard', `https://supabase.com/dashboard/project/${PROJECT_REF}`],
+                ['Edge Function secrets', `https://supabase.com/dashboard/project/${PROJECT_REF}/functions/secrets`],
+                ['Auth settings', `https://supabase.com/dashboard/project/${PROJECT_REF}/auth/providers`],
+                ['Database advisors', `https://supabase.com/dashboard/project/${PROJECT_REF}/advisors/security`],
+                ['Firebase console', `https://console.firebase.google.com/project/${FIREBASE_PROJECT}/overview`],
+                ['Google Cloud console', `https://console.cloud.google.com/home/dashboard?project=${FIREBASE_PROJECT}`],
+                ['App Store Connect', 'https://appstoreconnect.apple.com/apps'],
+                ['Rehearse on the App Store', APP_STORE_URL],
+              ]
+                .map(([label, href]) => `<div><a href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(label)}</a>${icon('external', 'width="14" height="14" style="color:var(--text-3)"')}</div>`)
+                .join('')}</div></div>
+            </div>
+          </div>`;
+      } catch (e) {
+        showError(content, e, load);
+      }
+    }
+
+    document.getElementById('recheck')!.addEventListener('click', () => void load());
+    ready().then(load);
+  </script>
+</AdminLayout>

@@ -49,6 +49,8 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
 
     const LABELS: Record<string, string> = {
       'app_config.publish': 'Published app config',
+      'app_config.maintenance_on': 'Turned on maintenance',
+      'app_config.maintenance_off': 'Turned off maintenance',
       'song.create': 'Created song',
       'song.update': 'Updated song',
       'storage.upload': 'Uploaded song file',
@@ -57,10 +59,12 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
       'report.open': 'Reopened report',
       'user.suspend': 'Suspended account',
       'user.unsuspend': 'Restored account',
+      'user.protect': 'Protected account',
+      'user.unprotect': 'Removed protection',
       'security.phone_added': 'Added sign-in phone',
       'security.phone_removed': 'Removed sign-in phone',
     };
-    const TONE: Record<string, string> = { 'security.phone_removed': 'badge-warn', 'security.phone_added': 'badge-info', 'user.suspend': 'badge-bad', 'app_config.publish': 'badge-accent', 'user.unsuspend': 'badge-good' };
+    const TONE: Record<string, string> = { 'app_config.maintenance_on': 'badge-bad', 'app_config.maintenance_off': 'badge-good', 'security.phone_removed': 'badge-warn', 'security.phone_added': 'badge-info', 'user.suspend': 'badge-bad', 'app_config.publish': 'badge-accent', 'user.unsuspend': 'badge-good' };
 
     function summary(e: Entry): string {
       const d = e.details ?? {};
@@ -69,6 +73,11 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
           const from = d.from as { min: string; latest: string } | undefined;
           const to = d.to as { min: string; latest: string } | undefined;
           return `v${esc(d.version)} · minimum ${esc(from?.min)} → ${esc(to?.min)}, latest ${esc(from?.latest)} → ${esc(to?.latest)}${d.note ? ` · “${esc(d.note)}”` : ''}`;
+        }
+        case 'app_config.maintenance_on':
+        case 'app_config.maintenance_off': {
+          const to = d.to as { maintenance_message?: string } | undefined;
+          return `v${esc(d.version)}${d.note ? ` · “${esc(d.note)}”` : ''}${to?.maintenance_message ? ` · message: ${esc(to.maintenance_message)}` : ''}`;
         }
         case 'song.create':
           return `<a href="/admin/music/?song=${esc(e.target_id)}">${esc(d.title)}</a>${d.is_active ? ' · shown in the app' : ' · hidden'}`;
@@ -80,6 +89,8 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
           return `<a href="/admin/music/?song=${esc(e.target_id)}">${esc(d.file)}</a> · ${esc(fmt.bytes(d.bytes))}`;
         case 'user.suspend':
         case 'user.unsuspend':
+        case 'user.protect':
+        case 'user.unprotect':
           return `<a href="/admin/users/?user=${esc(e.target_id)}">${esc(d.email ?? e.target_id)}</a>${d.reason ? ` · “${esc(d.reason)}”` : ''}`;
         case 'security.phone_added':
         case 'security.phone_removed':

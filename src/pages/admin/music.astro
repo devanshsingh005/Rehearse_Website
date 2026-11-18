@@ -64,9 +64,20 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
       original: { field: 'original_pdf_path', label: 'Original sheet (PDF)', help: 'The score as printed.', accept: 'application/pdf,.pdf', required: true },
       labeled: { field: 'labeled_pdf_path', label: 'Labeled sheet (PDF)', help: 'The score with note names, from the converter.', accept: 'application/pdf,.pdf', required: true },
       score: { field: 'output_json_path', label: 'Score data (score.json)', help: 'Converted MusicXML that drives the piano animation.', accept: 'application/json,.json', required: true },
-      cover: { field: 'cover_image_url', label: 'Cover image (optional)', help: 'PNG, JPEG or WebP.', accept: 'image/png,image/jpeg,image/webp', required: false },
+      cover: { field: 'cover_image_url', label: 'Cover image', help: 'Built-in artwork, or your own PNG, JPEG or WebP.', accept: 'image/png,image/jpeg,image/webp', required: false },
     };
     const MAX_BYTES = 20 * 1024 * 1024;
+    const MAX_COVER_BYTES = 5 * 1024 * 1024;
+    /** The app ships artwork named trackimage_1 … trackimage_16; a song can point at one by name. */
+    const BUILT_IN_ART = Array.from({ length: 16 }, (_, i) => `trackimage_${i + 1}`);
+    const builtInNumber = (v: string | null) => v?.match(/^trackimage_(\d+)$/)?.[1] ?? null;
+    const coverThumb = (v: string | null) => (builtInNumber(v) ? `/admin/artwork/${v}.jpg` : v && /^https:\/\//.test(v) ? v : null);
+
+    /** "Minuet in G" → "MG", "London Bridge" → "LB" (what the existing songs use). */
+    function initialsFor(title: string): string {
+      const words = title.match(/[\p{L}\p{N}]+/gu) ?? [];
+      return words.slice(0, 2).map((w) => w[0]).join('').toUpperCase() || title.slice(0, 2).toUpperCase();
+    }
     const TEMPOS = { slow: 'Slow', medium: 'Medium', fast: 'Fast' };
     const HANDS = { right_only: 'Right hand', left_only: 'Left hand', both: 'Both hands' };
 
@@ -102,7 +113,11 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
           .map((s) => {
             const dots = [s.original_pdf_path, s.labeled_pdf_path, s.output_json_path].map((v) => `<i class="${v ? 'on' : ''}"></i>`).join('');
             return `<tr data-clickable data-id="${esc(s.id)}" tabindex="0">
-              <td><div class="song-cell"><span class="initials">${esc(s.initials)}</span><div><div class="cell-main">${esc(s.title)}</div><div class="cell-sub">${esc(s.composer)}</div></div></div></td>
+              <td><div class="song-cell">${
+                coverThumb(s.cover_image_url)
+                  ? `<img class="initials" style="object-fit:cover" src="${esc(coverThumb(s.cover_image_url))}" alt="" loading="lazy">`
+                  : `<span class="initials">${esc(s.initials)}</span>`
+              }<div><div class="cell-main">${esc(s.title)}</div><div class="cell-sub">${esc(s.composer)}</div></div></div></td>
               <td>${s.is_active ? '<span class="badge badge-good">In the app</span>' : '<span class="badge">Hidden</span>'}${s.open_reports ? ` <span class="badge badge-warn">${esc(s.open_reports)} report${s.open_reports > 1 ? 's' : ''}</span>` : ''}</td>
               <td class="hide-sm">${esc(s.level)} · ${esc(TEMPOS[s.tempo] ?? s.tempo)}</td>
               <td class="hide-sm">${esc(HANDS[s.hands] ?? s.hands)}</td>
@@ -126,6 +141,7 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
 
     async function validateFile(kind: FileKind, file: File): Promise<string | null> {
       if (file.size > MAX_BYTES) return `That file is ${fmt.bytes(file.size)}; the limit is 20 MB.`;
+      if (kind === 'cover' && file.size > MAX_COVER_BYTES) return `That image is ${fmt.bytes(file.size)}; covers can be up to 5 MB. A square image around 1000 px is plenty.`;
       if (kind === 'original' || kind === 'labeled') {
         const head = new TextDecoder().decode(await file.slice(0, 5).arrayBuffer());
         if (head !== '%PDF-') return "That file isn't a PDF.";
@@ -174,11 +190,52 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
         is_free: true,
         is_active: false,
         sort_order: (songs.reduce((m, s) => Math.max(m, s.sort_order), 0) || 0) + 1,
-        cover_image_url: null,
+        cover_image_url: BUILT_IN_ART.find((name) => !songs.some((x) => x.cover_image_url === name)) ?? null,
         original_pdf_path: null,
         labeled_pdf_path: null,
         output_json_path: null,
       };
+    }
+
+    /** Grid of the app's built-in artwork. Resolves with the chosen name, null for "none", undefined if cancelled. */
+    function pickArtwork(current: string | null): Promise<string | null | undefined> {
+      return new Promise((resolve) => {
+        const backdrop = document.createElement('div');
+        backdrop.className = 'dialog-backdrop';
+        const dialog = document.createElement('div');
+        dialog.className = 'dialog';
+        dialog.style.width = 'min(520px, calc(100vw - 32px))';
+        dialog.setAttribute('role', 'dialog');
+        dialog.setAttribute('aria-modal', 'true');
+        dialog.setAttribute('aria-label', 'Choose built-in artwork');
+        dialog.innerHTML = `<div class="dialog-body"><h3>Choose built-in artwork</h3><p>These images ship inside the app, so they load instantly and work offline.</p>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">${BUILT_IN_ART.map(
+            (name, i) => `<button type="button" data-art="${name}" aria-label="Artwork ${i + 1}" style="padding:0;border:2px solid ${current === name ? 'var(--accent)' : 'transparent'};border-radius:12px;background:none;cursor:pointer;aspect-ratio:1;overflow:hidden">
+              <img src="/admin/artwork/${name}.jpg" alt="" style="width:100%;height:100%;object-fit:cover;display:block"></button>`,
+          ).join('')}</div></div>
+          <div class="dialog-foot"><button type="button" class="btn btn-ghost" data-none style="margin-right:auto">No cover</button><button type="button" class="btn" data-cancel>Cancel</button></div>`;
+        document.body.append(backdrop, dialog);
+        requestAnimationFrame(() => {
+          backdrop.classList.add('open');
+          dialog.classList.add('open');
+        });
+        const close = (value: string | null | undefined) => {
+          backdrop.classList.remove('open');
+          dialog.classList.remove('open');
+          document.removeEventListener('keydown', onKey);
+          setTimeout(() => {
+            backdrop.remove();
+            dialog.remove();
+          }, 180);
+          resolve(value);
+        };
+        const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close(undefined);
+        document.addEventListener('keydown', onKey);
+        backdrop.addEventListener('click', () => close(undefined));
+        dialog.querySelector('[data-cancel]')!.addEventListener('click', () => close(undefined));
+        dialog.querySelector('[data-none]')!.addEventListener('click', () => close(null));
+        dialog.querySelectorAll<HTMLButtonElement>('[data-art]').forEach((b) => b.addEventListener('click', () => close(b.dataset.art!)));
+      });
     }
 
     function openEditor(existing?: Song) {
@@ -198,7 +255,7 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
           <form class="form-grid" id="song-form" novalidate>
             <div class="field span-2"><label for="f-title">Title</label><input class="input" id="f-title" maxlength="200" required value="${esc(song.title)}"></div>
             <div class="field"><label for="f-composer">Composer</label><input class="input" id="f-composer" maxlength="200" required value="${esc(song.composer)}"></div>
-            <div class="field"><label for="f-initials">Initials</label><input class="input" id="f-initials" maxlength="3" placeholder="From the title" value="${esc(song.initials)}"><span class="hint">Shown when there's no cover. Up to 3 letters.</span></div>
+            <div class="field"><label for="f-initials">Initials</label><input class="input" id="f-initials" maxlength="2" placeholder="From the title" value="${esc(song.initials)}"><span class="hint">Two letters, used in this dashboard. Left empty, it's taken from the title.</span></div>
             <div class="field"><label for="f-level">Level</label><select class="select" id="f-level">${[1, 2, 3, 4, 5].map((l) => option(l, `Level ${l}`, song.level)).join('')}</select></div>
             <div class="field"><label for="f-tempo">Tempo</label><select class="select" id="f-tempo">${Object.entries(TEMPOS).map(([v, l]) => option(v, l, song.tempo)).join('')}</select></div>
             <div class="field"><label for="f-hands">Hands</label><select class="select" id="f-hands">${Object.entries(HANDS).map(([v, l]) => option(v, l, song.hands)).join('')}</select></div>
@@ -221,6 +278,17 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
           .map((kind) => {
             const spec = FILES[kind];
             const url = song[spec.field] as string | null;
+            if (kind === 'cover') {
+              const n = builtInNumber(url);
+              const thumb = coverThumb(url);
+              const label = n ? `Built-in artwork ${n}` : url && /^https:/.test(url) ? 'Custom image' : url ? `Unknown value “${url}”` : 'No cover: the app shows random built-in artwork';
+              return `<div class="file-slot ${thumb ? 'ok' : ''}">
+                ${thumb ? `<img src="${esc(thumb)}" alt="" style="width:36px;height:36px;border-radius:9px;object-fit:cover;flex:none">` : `<span class="icon">${icon('file')}</span>`}
+                <span class="meta"><strong>${esc(spec.label)}</strong><span>${esc(label)}</span></span>
+                <button type="button" class="btn btn-sm" data-pick-art>Choose artwork</button>
+                <label class="btn btn-sm">${icon('upload')}Upload<input type="file" class="sr-only" data-kind="cover" accept="${spec.accept}"></label>
+              </div>`;
+            }
             return `<div class="file-slot ${url ? 'ok' : ''}">
               <span class="icon">${icon(url ? 'fileCheck' : 'file')}</span>
               <span class="meta"><strong>${esc(spec.label)}</strong><span>${url ? esc(url.split('/').slice(-1)[0]) : esc(spec.help)}</span></span>
@@ -254,6 +322,14 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
         }
       });
       d.body.querySelector('#song-form')!.addEventListener('input', () => (dirty = true));
+      filesEl.addEventListener('click', async (e) => {
+        if (!(e.target as HTMLElement).closest('[data-pick-art]')) return;
+        const picked = await pickArtwork(song.cover_image_url);
+        if (picked === undefined) return;
+        song.cover_image_url = picked;
+        dirty = true;
+        renderFiles();
+      });
 
       d.foot.hidden = false;
       d.foot.innerHTML = `${!isNew && song.is_active ? `<button class="btn" data-hide style="margin-right:auto">${icon('eyeOff')}Hide from app</button>` : ''}<button class="btn" data-cancel>Cancel</button><button class="btn btn-primary" data-save>${isNew ? 'Create song' : 'Save changes'}</button>`;
@@ -264,7 +340,7 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
           ...song,
           title: v('f-title'),
           composer: v('f-composer'),
-          initials: v('f-initials'),
+          initials: (v('f-initials') || initialsFor(v('f-title'))).slice(0, 2).toUpperCase(),
           level: Number(v('f-level')),
           tempo: v('f-tempo') as Song['tempo'],
           hands: v('f-hands') as Song['hands'],
@@ -282,6 +358,14 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
         if (!next.composer) missing.push('a composer');
         if (missing.length) return toast(`Add ${missing.join(' and ')}.`, 'error');
         if (next.is_active && !hasFiles(next)) return toast('Upload the original PDF, labeled PDF and score.json before showing the song in the app.', 'error');
+        if (existing?.is_active && next.is_active && (next.title !== existing.title || next.composer !== existing.composer)) {
+          const ok = await confirmDialog({
+            title: 'Rename a song that’s in the app?',
+            body: 'The app finds playlist songs by their ID, so playlists keep working. A few older playlist entries are looked up by title and composer instead, and those would show this song as unavailable.',
+            confirmLabel: 'Rename',
+          });
+          if (ok === null) return;
+        }
         if (next.is_active && !existing?.is_active) {
           const ok = await confirmDialog({
             title: `Show "${next.title}" in the app?`,
@@ -311,7 +395,7 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
       d.foot.querySelector('[data-hide]')?.addEventListener('click', async (e) => {
         const ok = await confirmDialog({
           title: `Hide "${song.title}"?`,
-          body: "It disappears from Discover. People who already opened it keep their saved copy. Nothing is deleted, so you can show it again later.",
+          body: "It disappears from Discover, and anyone who saved it to a playlist sees it as unavailable until you show it again. Nothing is deleted.",
           confirmLabel: 'Hide from app',
           danger: true,
         });

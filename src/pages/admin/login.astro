@@ -120,6 +120,7 @@ import '../../styles/admin.css';
       };
 
       if (params.get('reason') === 'idle') notice('You were signed out after 30 minutes without activity.');
+      if (params.get('reason') === 'ended') notice('Your session ended, for example because a phone was added or you signed out elsewhere. Sign in again.');
       if (params.get('reason') === 'denied') notice("That account doesn't have admin access.", 'bad');
 
       let factorId = '';

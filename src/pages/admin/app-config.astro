@@ -6,7 +6,7 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
   <div class="page-head">
     <div>
       <h2>App config</h2>
-      <p>Control which app versions must update. The app reads this when it opens and each time it comes back to the foreground.</p>
+      <p>Maintenance mode and which app versions must update. The app reads this when it opens, each time it comes back to the foreground, and every 2 minutes while open.</p>
     </div>
   </div>
 
@@ -35,13 +35,17 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
       latest_version: string;
       update_required_message: string;
       update_available_message: string;
+      maintenance_enabled: boolean;
+      maintenance_title: string;
+      maintenance_message: string;
+      maintenance_ends_at: string | null;
       version: number;
       updated_at: string;
     }
     interface HistoryRow {
       id: number;
       version: number;
-      config: Omit<Config, 'platform' | 'version' | 'updated_at'>;
+      config: Omit<Config, 'platform' | 'version' | 'updated_at' | 'maintenance_enabled'> & { maintenance_enabled?: boolean };
       changed_by_email: string | null;
       note: string | null;
       created_at: string;
@@ -85,6 +89,27 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
       </div></div>`;
     }
 
+    function phoneMaintenance(title: string, message: string, endsAt: string | null) {
+      const back = endsAt && new Date(endsAt) > new Date()
+        ? `<p style="color:#f6f1eb">Expected back around ${esc(new Date(endsAt).toLocaleString('en', { hour: 'numeric', minute: '2-digit', day: 'numeric', month: 'short' }))}</p>`
+        : '';
+      return `<div class="phone"><div class="phone-screen">
+        <span class="app-icon" style="display:grid;place-items:center;background:#ef9408;color:#1a1714" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+        </span>
+        <h5>${esc(title || '…')}</h5><p>${esc(message || '…')}</p>${back}
+        <span class="p-btn">Try again</span>
+      </div></div>`;
+    }
+
+    /** ISO time → value for <input type="datetime-local"> in the viewer's time zone. */
+    function toLocalInput(iso: string | null): string {
+      if (!iso || new Date(iso) <= new Date()) return '';
+      const d = new Date(iso);
+      const pad = (n: number) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
     /** First version that reads this config; 1.0 shipped before it existed. */
     const FIRST_READER = '1.1';
     const maxVersion = (a: string, b: string) => (cmp(a, b) >= 0 ? a : b);
@@ -92,6 +117,9 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
     function rules(min: string, latest: string) {
       const row = (label: string, badge: string) => `<div class="version-row"><span>${esc(label)}</span>${badge}</div>`;
       const rows = [row('Version 1.0', '<span class="badge">Not affected</span>')];
+      if (current.maintenance_enabled) {
+        rows.push(row(`${FIRST_READER} and later, while maintenance is on`, '<span class="badge badge-bad">Maintenance screen</span>'));
+      }
       const promptFrom = maxVersion(min, FIRST_READER);
       if (cmp(min, FIRST_READER) > 0) rows.push(row(`${FIRST_READER} up to before ${min}`, '<span class="badge badge-bad">Must update</span>'));
       if (cmp(latest, promptFrom) > 0) rows.push(row(`${promptFrom} up to before ${latest}`, '<span class="badge badge-warn">Asked once, can skip</span>'));
@@ -101,7 +129,30 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
 
     function render(history: HistoryRow[]) {
       const c = current;
+      const mOn = c.maintenance_enabled;
       content.innerHTML = `
+        <div class="grid grid-main" style="margin-bottom:16px">
+          <div class="card" id="maintenance-card" ${mOn ? 'style="border-color:color-mix(in srgb, var(--bad) 45%, transparent)"' : ''}>
+            <div class="card-head"><div><h3>Maintenance mode</h3><p>Blocks the app for everyone on 1.1 or later with a screen they can't close, until you turn it off.</p></div>
+              ${mOn ? `<span class="badge badge-bad">${icon('alert')}On</span>` : '<span class="badge">Off</span>'}</div>
+            <form class="card-body form-grid" id="maintenance-form" novalidate>
+              ${mOn ? `<div class="span-2 callout callout-bad">${icon('alert')}<div><p><strong>The app is blocked right now</strong> for everyone on 1.1 or later. Turned on ${esc(fmt.ago(c.updated_at))}.</p></div></div>` : ''}
+              <div class="field span-2"><label for="m-title">Title</label><input class="input" id="m-title" maxlength="80" value="${esc(c.maintenance_title)}"></div>
+              <div class="field span-2"><label for="m-message">Message</label><textarea class="textarea" id="m-message" maxlength="300">${esc(c.maintenance_message)}</textarea></div>
+              <div class="field"><label for="m-ends">Expected back (optional)</label><input class="input" id="m-ends" type="datetime-local" value="${esc(toLocalInput(c.maintenance_ends_at))}"><span class="hint">Shown in the app as “Expected back around …”, in each person's own time zone. Maintenance doesn't end by itself.</span></div>
+              <div class="span-2" id="m-error" hidden></div>
+              <div class="span-2" style="display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end">
+                ${mOn
+                  ? `<button type="button" class="btn" id="m-save">Update message</button><button type="button" class="btn btn-primary" id="m-off">Turn off maintenance</button>`
+                  : `<button type="button" class="btn btn-danger" id="m-on">${icon('alert')}Turn on maintenance</button>`}
+              </div>
+            </form>
+          </div>
+          <div class="card">
+            <div class="card-head"><div><h3>Maintenance screen</h3><p>What people see in the app</p></div></div>
+            <div class="card-body" id="m-preview"></div>
+          </div>
+        </div>
         <div class="grid grid-main">
           <div class="card">
             <div class="card-head"><div><h3>Force update (iOS)</h3><p>Published version ${esc(c.version)} · ${esc(fmt.dateTime(c.updated_at))}</p></div>
@@ -133,13 +184,14 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
         <div class="card section-gap">
           <div class="card-head"><div><h3>History</h3><p>Every publish is kept. Rolling back publishes an old version again as a new one.</p></div></div>
           <div class="table-wrap"><table class="table">
-            <thead><tr><th>Version</th><th>Minimum</th><th>Latest</th><th class="hide-sm">Published by</th><th>When</th><th class="r"></th></tr></thead>
+            <thead><tr><th>Version</th><th>Minimum</th><th>Latest</th><th>Maintenance</th><th class="hide-sm">Published by</th><th>When</th><th class="r"></th></tr></thead>
             <tbody>${history
               .map(
                 (h) => `<tr>
                   <td><span class="cell-main">v${esc(h.version)}</span>${h.version === c.version ? ' <span class="badge badge-good">Live</span>' : ''}${h.note ? `<div class="cell-sub">${esc(h.note)}</div>` : ''}</td>
                   <td class="mono">${esc(h.config.min_supported_version)}</td>
                   <td class="mono">${esc(h.config.latest_version)}</td>
+                  <td>${h.config.maintenance_enabled ? '<span class="badge badge-bad">On</span>' : '<span class="muted">Off</span>'}</td>
                   <td class="hide-sm">${esc(h.changed_by_email ?? 'Setup')}</td>
                   <td class="nowrap">${esc(fmt.dateTime(h.created_at))}</td>
                   <td class="r">${h.version === c.version ? '' : `<button class="btn btn-sm btn-ghost" data-rollback="${esc(h.id)}" data-v="${esc(h.version)}">${icon('undo')}Roll back</button>`}</td>
@@ -161,20 +213,27 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
         if (!VERSION.test(latest)) errors.push('Latest version must look like 1.2 or 1.2.3.');
         if (!errors.length && cmp(min, latest) > 0) errors.push("Minimum version can't be higher than the latest version.");
         if (!val('f-required') || !val('f-available')) errors.push('Both messages are needed.');
+        // A minimum above what's downloadable would block people with no way to update.
+        if (!errors.length && storeVersion && cmp(min, storeVersion) > 0 && cmp(min, c.min_supported_version) !== 0) {
+          errors.push(`The minimum can't be higher than the App Store version (${storeVersion}): people below it would be blocked with nothing to update to. Raise it after the new version is live.`);
+        }
         content.querySelector('#f-min')!.setAttribute('aria-invalid', String(!VERSION.test(min)));
         content.querySelector('#f-latest')!.setAttribute('aria-invalid', String(!VERSION.test(latest)));
         const ahead = !errors.length && storeVersion && cmp(latest, storeVersion) > 0;
-        errorBox.hidden = !errors.length && !ahead;
+        const storeUnknown = !errors.length && !storeVersion;
+        errorBox.hidden = !errors.length && !ahead && !storeUnknown;
         errorBox.innerHTML = errors.length
           ? `<div class="callout callout-bad">${icon('alert')}<div>${errors.map((e) => `<p>${esc(e)}</p>`).join('')}</div></div>`
           : ahead
             ? `<div class="callout callout-warn">${icon('alert')}<div><p><strong>${esc(latest)} isn't on the App Store yet</strong> (it has ${esc(storeVersion)}). People would be asked to update to a version they can't download.</p></div></div>`
-            : '';
+            : storeUnknown
+              ? `<div class="callout callout-warn">${icon('alert')}<div><p><strong>Couldn't check the App Store version.</strong> Make sure the versions you publish are already live on the App Store.</p></div></div>`
+              : '';
         if (!errors.length) content.querySelector('#rules')!.innerHTML = rules(min, latest);
         content.querySelector('#preview')!.innerHTML =
           preview === 'required' ? phoneRequired(val('f-required') || '…') : phoneAvailable(val('f-available') || '…');
         content.querySelector<HTMLButtonElement>('#publish')!.disabled = errors.length > 0;
-        return { ok: !errors.length, ahead: Boolean(ahead), min, latest };
+        return { ok: !errors.length, ahead: Boolean(ahead), storeUnknown, min, latest };
       };
       form.addEventListener('input', validate);
       validate();
@@ -208,7 +267,11 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
           confirmLabel: 'Publish',
           danger: raisesMin,
           input: { label: 'Note (optional)', placeholder: 'e.g. 1.2 fixes a crash on iPad' },
-          acknowledge: v.ahead ? `I understand ${v.latest} isn't on the App Store yet` : undefined,
+          acknowledge: v.ahead
+            ? `I understand ${v.latest} isn't on the App Store yet`
+            : v.storeUnknown
+              ? 'I checked these versions are live on the App Store'
+              : undefined,
         });
         if (note === null) return;
         await busy(content.querySelector<HTMLButtonElement>('#publish')!, async () => {
@@ -231,13 +294,90 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
         });
       });
 
+      // ---------- Maintenance ----------
+      const mForm = content.querySelector<HTMLFormElement>('#maintenance-form')!;
+      const mError = content.querySelector<HTMLElement>('#m-error')!;
+      const readMaintenance = () => {
+        const title = val('m-title');
+        const message = val('m-message');
+        const endsRaw = val('m-ends');
+        const ends = endsRaw ? new Date(endsRaw) : null;
+        const errors: string[] = [];
+        if (!title) errors.push('Add a title.');
+        if (!message) errors.push('Add a message.');
+        if (ends && (Number.isNaN(ends.getTime()) || ends <= new Date())) errors.push('The expected end time must be in the future.');
+        mError.hidden = !errors.length;
+        mError.innerHTML = errors.length ? `<div class="callout callout-bad">${icon('alert')}<div>${errors.map((e) => `<p>${esc(e)}</p>`).join('')}</div></div>` : '';
+        content.querySelector('#m-preview')!.innerHTML = phoneMaintenance(title, message, ends ? ends.toISOString() : null);
+        return { ok: !errors.length, title, message, endsAt: ends ? ends.toISOString() : null };
+      };
+      mForm.addEventListener('input', readMaintenance);
+      readMaintenance();
+
+      const setMaintenance = async (enabled: boolean, btn: HTMLButtonElement) => {
+        const m = readMaintenance();
+        if (!m.ok) return;
+        let note: string | null;
+        if (enabled && !c.maintenance_enabled) {
+          note = await confirmDialog({
+            title: 'Turn on maintenance mode?',
+            body: "Everyone on version 1.1 or later is blocked from using the app within about 2 minutes, or the next time they open it. They stay blocked until you turn it off. Version 1.0 isn't affected. If a new version is waiting for App Review, Apple's reviewers are blocked too, so don't turn this on while a build is in review.",
+            confirmLabel: 'Turn on maintenance',
+            danger: true,
+            input: { label: 'Reason (saved in the activity log)', placeholder: 'e.g. database upgrade', required: true },
+            acknowledge: 'I understand people can’t use the app until I turn this off',
+          });
+        } else if (!enabled) {
+          note = await confirmDialog({
+            title: 'Turn off maintenance mode?',
+            body: 'The app opens normally again. People on the maintenance screen get back in within about 30 seconds.',
+            confirmLabel: 'Turn off maintenance',
+            input: { label: 'Note (optional)' },
+          });
+        } else {
+          note = await confirmDialog({ title: 'Update the maintenance message?', body: 'People already on the maintenance screen see it within about 30 seconds.', confirmLabel: 'Update' });
+        }
+        if (note === null) return;
+        await busy(btn, async () => {
+          try {
+            await rpc('admin_set_maintenance', {
+              p_enabled: enabled,
+              p_title: m.title,
+              p_message: m.message,
+              p_ends_at: m.endsAt,
+              p_expected_version: c.version,
+              p_note: note || null,
+            });
+            toast(enabled === c.maintenance_enabled ? 'Maintenance message updated' : enabled ? 'Maintenance mode is on' : 'Maintenance mode is off', enabled && !c.maintenance_enabled ? 'info' : 'success');
+            document.dispatchEvent(new CustomEvent('admin:maintenance-changed'));
+            void load();
+          } catch (err) {
+            toast(err instanceof Error ? err.message : String(err), 'error');
+          }
+        });
+      };
+      content.querySelector<HTMLButtonElement>('#m-on')?.addEventListener('click', (e) => void setMaintenance(true, e.currentTarget as HTMLButtonElement));
+      content.querySelector<HTMLButtonElement>('#m-off')?.addEventListener('click', (e) => void setMaintenance(false, e.currentTarget as HTMLButtonElement));
+      content.querySelector<HTMLButtonElement>('#m-save')?.addEventListener('click', (e) => void setMaintenance(true, e.currentTarget as HTMLButtonElement));
+
       content.querySelectorAll<HTMLButtonElement>('[data-rollback]').forEach((btn) =>
         btn.addEventListener('click', async () => {
           const h = history.find((x) => String(x.id) === btn.dataset.rollback)!;
+          if (storeVersion && cmp(h.config.min_supported_version, storeVersion) > 0) {
+            toast(`v${h.version} needs version ${h.config.min_supported_version}, which isn't on the App Store (${storeVersion}). Rolling back would block people with nothing to update to.`, 'error');
+            return;
+          }
           const ok = await confirmDialog({
             title: `Roll back to v${h.version}?`,
-            body: `This publishes minimum ${h.config.min_supported_version} and latest ${h.config.latest_version} again, with their messages.`,
+            body: `This publishes minimum ${h.config.min_supported_version} and latest ${h.config.latest_version} again, with their messages.${
+              Boolean(h.config.maintenance_enabled) !== c.maintenance_enabled
+                ? h.config.maintenance_enabled
+                  ? ' It also TURNS ON maintenance mode, blocking the app for everyone on 1.1 or later.'
+                  : ' It also turns maintenance mode off.'
+                : ''
+            }`,
             confirmLabel: 'Roll back',
+            danger: Boolean(h.config.maintenance_enabled) && !c.maintenance_enabled,
           });
           if (ok === null) return;
           await busy(btn, async () => {

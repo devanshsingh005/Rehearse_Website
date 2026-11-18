@@ -22,6 +22,7 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
         <button data-filter="inactive" aria-pressed="false">Inactive</button>
         <button data-filter="suspended" aria-pressed="false">Suspended</button>
         <button data-filter="unconfirmed" aria-pressed="false">Unconfirmed</button>
+        <button data-filter="protected" aria-pressed="false">Protected</button>
       </div>
     </div>
     <div id="table"></div>
@@ -52,6 +53,7 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
       study_seconds: number;
       uploads: number;
       current_chapter: number | null;
+      protected_reason: string | null;
     }
 
     const PAGE = 25;
@@ -65,6 +67,10 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
     const isSuspended = (u: { banned_until: string | null }) => !!u.banned_until && new Date(u.banned_until) > new Date();
 
     function statusBadge(u: UserRow) {
+      const shield = u.protected_reason ? ` <span class="badge badge-info" title="${esc(u.protected_reason)}">Protected</span>` : '';
+      return baseBadge(u) + shield;
+    }
+    function baseBadge(u: UserRow) {
       if (isSuspended(u)) return `<span class="badge badge-bad">${icon('ban')}Suspended</span>`;
       if (!u.email_confirmed_at) return '<span class="badge badge-warn">Unconfirmed</span>';
       if (u.last_activity && Date.now() - new Date(u.last_activity).getTime() < 30 * 864e5) return '<span class="badge badge-good">Active</span>';
@@ -122,7 +128,8 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
         const suspended = isSuspended(a);
         d.setTitle(p.username || p.full_name || a.email);
         d.body.innerHTML = `
-          ${suspended ? `<div class="callout callout-bad">${icon('ban')}<div><strong>Suspended</strong><p>This person can't sign in to the app.</p></div></div>` : ''}
+          ${suspended ? `<div class="callout callout-bad">${icon('ban')}<div><strong>Suspended</strong><p>This person can't sign in to the app. The app tells them their account is suspended.</p></div></div>` : ''}
+          ${a.protected_reason ? `<div class="callout">${icon('shield')}<div><strong>Protected account</strong><p>${esc(a.protected_reason)}. It can't be suspended while it's protected.</p></div></div>` : ''}
           <div class="mini-stats">
             <div class="mini-stat"><b>${esc(fmt.duration(p.total_study_seconds))}</b><span>Practice time</span></div>
             <div class="mini-stat"><b>${esc(fmt.n(u.counts.lesson_events))}</b><span>Lesson events</span></div>
@@ -168,9 +175,40 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
 
         if (a.is_admin) return;
         d.foot.hidden = false;
-        d.foot.innerHTML = suspended
-          ? `<button class="btn btn-primary" data-action="unsuspend">${icon('undo')}Restore access</button>`
-          : `<button class="btn btn-danger" data-action="suspend">${icon('ban')}Suspend account</button>`;
+        d.foot.innerHTML = `${
+          a.protected_reason
+            ? `<button class="btn btn-ghost" data-protect="off" style="margin-right:auto">Remove protection</button>`
+            : `<button class="btn btn-ghost" data-protect="on" style="margin-right:auto" title="For accounts like Apple's App Review demo login">${icon('shield')}Protect account</button>`
+        }${
+          suspended
+            ? `<button class="btn btn-primary" data-action="unsuspend">${icon('undo')}Restore access</button>`
+            : `<button class="btn btn-danger" data-action="suspend" ${a.protected_reason ? 'disabled title="Remove protection first"' : ''}>${icon('ban')}Suspend account</button>`
+        }`;
+        d.foot.querySelector<HTMLButtonElement>('[data-protect]')!.addEventListener('click', async (e) => {
+          const btn = e.currentTarget as HTMLButtonElement;
+          const on = btn.dataset.protect === 'on';
+          const reason = await confirmDialog(
+            on
+              ? {
+                  title: `Protect ${a.email}?`,
+                  body: "A protected account can't be suspended from this dashboard. Use it for the demo login you give Apple's App Review, so it can't be suspended by mistake.",
+                  confirmLabel: 'Protect account',
+                  input: { label: 'Why it’s protected', placeholder: 'e.g. App Review demo account', required: true, value: 'App Review demo account' },
+                }
+              : { title: `Remove protection from ${a.email}?`, body: 'The account can then be suspended.', confirmLabel: 'Remove protection' },
+          );
+          if (reason === null) return;
+          await busy(btn, async () => {
+            try {
+              await rpc('admin_set_protected', { p_user_id: a.id, p_protected: on, p_reason: on ? reason : null });
+              toast(on ? 'Account protected' : 'Protection removed');
+              d.close();
+              void load();
+            } catch (err) {
+              toast(err instanceof Error ? err.message : String(err), 'error');
+            }
+          });
+        });
         d.foot.querySelector<HTMLButtonElement>('[data-action]')!.addEventListener('click', async (e) => {
           const btn = e.currentTarget as HTMLButtonElement;
           const action = btn.dataset.action as 'suspend' | 'unsuspend';
@@ -178,7 +216,7 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
             action === 'suspend'
               ? {
                   title: `Suspend ${a.email}?`,
-                  body: "They won't be able to sign in or refresh their session. If they're signed in now, the app stops working for them within an hour. You can restore access at any time.",
+                  body: "They won't be able to sign in, and the app tells them the account is suspended. If they're signed in now, they're signed out within an hour. Don't suspend the account you gave Apple for App Review. You can restore access at any time.",
                   confirmLabel: 'Suspend',
                   danger: true,
                   input: { label: 'Reason (saved in the activity log)', placeholder: 'e.g. abusive uploads', required: true },

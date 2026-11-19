@@ -573,6 +573,7 @@ ol.steps.plain li::before { background: var(--surface-2); color: var(--text-2); 
 .ts-choice:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
 .ts-choice input { position: absolute; opacity: 0; pointer-events: none; }
 .ts-choice-art { flex: none; width: 64px; height: 64px; border-radius: 12px; background: #2a2520; position: relative; overflow: hidden; }
+.ts-choice-christmas { background: #031711; }
 .ts-choice-art img:first-child { position: absolute; right: -4px; top: 0; width: 54px; }
 .ts-choice-art img:nth-child(2) { position: absolute; left: 10px; bottom: 6px; width: 36px; }
 .ts-choice-default::after { content: ''; position: absolute; inset: 16px; border: 2px solid #ef9408; border-radius: 8px; opacity: 0.8; }
@@ -583,7 +584,9 @@ ol.steps.plain li::before { background: var(--surface-2); color: var(--text-2); 
 .ts-phone { --bg: #f4f1ed; --card: #fff; --ink: #2d2823; --ink-2: #6b6259; --line: rgb(45 40 35 / 0.08);
   width: 240px; height: 500px; margin: 0 auto; border-radius: 38px; padding: 9px; background: #0b0a09; box-shadow: var(--shadow); }
 .ts-phone.dark { --bg: #1a1714; --card: #2a2520; --ink: #f0ede8; --ink-2: #a89e95; --line: rgb(255 255 255 / 0.07); }
-.ts-screen { position: relative; height: 100%; border-radius: 30px; overflow: hidden; background: var(--bg); color: var(--ink); padding: 44px 14px 14px; font-size: 10px; display: flex; flex-direction: column; gap: 8px; }
+/* Christmas, dark appearance: pine green page and cards with #405048 borders (light mode is unchanged) */
+.ts-phone.dark.xmas { --bg: #031711; --card: #0d2721; --line: rgb(64 80 72 / 0.6); }
+.ts-screen { position: relative; isolation: isolate; height: 100%; border-radius: 30px; overflow: hidden; background: var(--bg); color: var(--ink); padding: 44px 14px 14px; font-size: 10px; display: flex; flex-direction: column; gap: 8px; }
 .ts-art { display: none; position: absolute; pointer-events: none; }
 .xmas .ts-art { display: block; }
 .ts-head { position: relative; display: flex; align-items: center; justify-content: space-between; min-height: 40px; }
@@ -605,20 +608,35 @@ ol.steps.plain li::before { background: var(--surface-2); color: var(--text-2); 
 .ts-note { color: #ef9408; font-size: 24px; line-height: 1; }
 .ts-scene { left: 0; right: 0; bottom: 0; width: 100%; border-radius: 0 0 18px 18px; }
 .ts-hat { right: -8px; top: -15px; width: 48px; z-index: 3; }
-.ts-flake { width: 11px; height: 11px; color: rgb(239 148 8 / 0.45); }
+.ts-flake { width: 11px; height: 11px; color: rgb(255 255 255 / 0.4); }
 .ts-flake.f1 { left: 20%; top: 18%; } .ts-flake.f2 { right: 18%; top: 28%; width: 8px; height: 8px; }
 .ts-cta { height: 30px; border-radius: 999px; background: #ef9408; color: #000; display: grid; place-items: center; font-weight: 700; font-size: 10.5px; }
 .ts-link { text-align: center; color: #ef9408; font-weight: 600; }
+/* Christmas: the Home upload section in red, with gold brackets, note and link */
+.xmas .ts-scan { background: linear-gradient(#4a1513, #8c2622); color: #fff; }
+.xmas .ts-scan > span:not(.ts-note) { color: rgb(255 255 255 / 0.72); }
+.xmas .ts-scan::before { --gold: #e3b663;
+  background: linear-gradient(var(--gold), var(--gold)) top left / 16px 2px, linear-gradient(var(--gold), var(--gold)) top left / 2px 16px,
+    linear-gradient(var(--gold), var(--gold)) top right / 16px 2px, linear-gradient(var(--gold), var(--gold)) top right / 2px 16px,
+    linear-gradient(var(--gold), var(--gold)) bottom left / 16px 2px, linear-gradient(var(--gold), var(--gold)) bottom left / 2px 16px,
+    linear-gradient(var(--gold), var(--gold)) bottom right / 16px 2px, linear-gradient(var(--gold), var(--gold)) bottom right / 2px 16px;
+  background-repeat: no-repeat; }
+.xmas .ts-note, .xmas .ts-link { color: #e3b663; }
+.xmas .ts-cta { background: #c8302c; color: #fff; }
 .ts-section { display: flex; justify-content: space-between; align-items: baseline; margin-top: 4px; }
 .ts-section b { font-size: 12px; } .ts-section span { color: #ef9408; }
 .ts-tiles { display: flex; gap: 8px; }
 .ts-tiles i { position: relative; width: 64px; height: 64px; border-radius: 10px; overflow: hidden; background: linear-gradient(var(--a), var(--b)); }
 .ts-cap { left: 0; top: 0; width: 100%; height: 12px; filter: drop-shadow(0 1px 0 #c9d4df); }
-.ts-snow { display: none; position: absolute; inset: 0; pointer-events: none; z-index: 5; }
+/* behind everything on the screen (cards cover it), like the app */
+.ts-snow { display: none; position: absolute; inset: 0; pointer-events: none; z-index: -1; }
 .xmas .ts-snow { display: block; }
-.ts-snow i { position: absolute; top: -8px; width: 5px; height: 5px; border-radius: 50%; background: radial-gradient(#fff 35%, transparent 70%); transform: scale(var(--s)); animation: ts-fall linear infinite; }
-.ts-phone.light .ts-snow i { background: radial-gradient(#a9b9cb 35%, transparent 70%); }
-@keyframes ts-fall { to { transform: translate(14px, 520px) scale(var(--s)); } }
+.ts-snow i { position: absolute; top: -12px; width: 9px; height: 9px; opacity: 0.2; background: #fff; transform: scale(var(--s));
+  -webkit-mask: var(--flake) center / contain no-repeat; mask: var(--flake) center / contain no-repeat;
+  --flake: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2v20M3.3 7l17.4 10M3.3 17 20.7 7M12 6.5l-2.4-2.2M12 6.5l2.4-2.2M12 17.5l-2.4 2.2M12 17.5l2.4 2.2' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round'/%3E%3C/svg%3E");
+  animation: ts-fall linear infinite; }
+.ts-phone.light .ts-snow i { background: #9fb1c5; opacity: 0.4; }
+@keyframes ts-fall { to { transform: translate(10px, 520px) rotate(120deg) scale(var(--s)); } }
 @media (prefers-reduced-motion: reduce) { .ts-snow { display: none !important; } }
 .ts-field { height: 26px; border-radius: 9px; background: var(--card); color: var(--ink-2); display: flex; align-items: center; padding: 0 10px; }
 .ts-chips { display: flex; gap: 6px; } .ts-chips i { font-style: normal; padding: 5px 10px; border-radius: 999px; background: var(--card); }
@@ -632,11 +650,15 @@ ol.steps.plain li::before { background: var(--surface-2); color: var(--text-2); 
 .ts-searchbar { position: absolute; left: 14px; right: 14px; bottom: 14px; height: 28px; border-radius: 999px; background: var(--card); color: var(--ink-2); display: flex; align-items: center; padding: 0 12px; z-index: 1; }
 .ts-phone.ts-landscape { width: 100%; max-width: 440px; height: 220px; border-radius: 30px; }
 .ts-player { padding: 8px 30px 0; border-radius: 22px; }
-.ts-tl { left: 0; top: 0; width: 34px; } .ts-tr { right: 0; top: 0; width: 34px; transform: scaleX(-1); }
-.ts-bl { left: 0; bottom: 0; width: 46px; } .ts-br { right: 0; bottom: 0; width: 46px; transform: scaleX(-1); }
 .ts-col { position: relative; z-index: 1; height: 100%; display: flex; flex-direction: column; gap: 5px; }
-.ts-toolbar { height: 24px; border-radius: 12px; background: var(--card); display: flex; align-items: center; gap: 10px; padding: 0 10px; }
-.ts-pill { margin-left: auto; width: 60px; height: 8px; border-radius: 4px; background: var(--line); }
+.ts-toolbar { height: 24px; display: flex; align-items: center; gap: 6px; }
+.ts-btn { position: relative; flex: none; width: 24px; height: 24px; border-radius: 12px; background: var(--card); box-shadow: inset 0 0 0 1px var(--line); display: grid; place-items: center; font-weight: 700; }
+.ts-btn-wide { width: 78px; }
+.ts-prompt { flex: 1; height: 20px; border-radius: 10px; background: var(--card); display: grid; place-items: center; font-size: 9.5px; }
+.ts-pill { width: 54px; height: 6px; border-radius: 3px; background: var(--line); }
+/* the sprig sits half outside each end button, over its rim but never its icon */
+.ts-holly-l { left: -9px; top: -4px; width: 23px; z-index: 2; }
+.ts-holly-r { right: -9px; top: -4px; width: 23px; z-index: 2; transform: scaleX(-1); }
 .ts-sheet { position: relative; flex: 1; border-radius: 8px; background: #fff; display: flex; flex-direction: column; justify-content: center; gap: 6px; padding: 0 10px; }
 .ts-sheet i { height: 1px; background: #8a8178; }
 .ts-cursor { position: absolute; left: 40%; top: 8px; bottom: 8px; width: 2px; background: #ef9408; }

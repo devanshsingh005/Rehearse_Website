@@ -6,7 +6,7 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
   <div class="page-head">
     <div>
       <h2>Theme Studio</h2>
-      <p>Seasonal decorations for the iOS app. A theme only adds art: the app's colours, layout and controls stay exactly the same. The app picks up a change when it opens, when it comes back to the foreground, and every 2 minutes while open.</p>
+      <p>Seasonal looks for the iOS app: decorations, and for Christmas its own colours. The layout and controls never change, and the Default theme is the everyday look. The app picks up a change when it opens, when it comes back to the foreground, and every 2 minutes while open.</p>
     </div>
   </div>
 
@@ -49,7 +49,7 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
       default: { name: 'Default', about: 'The everyday look, with no decorations.' },
       christmas: {
         name: 'Christmas',
-        about: 'Pine branches, a Santa hat and a snowy scene on Home, snow on playlist covers, decorations on Library and Search, holly at the edges of the piano player, and light snowfall on Home.',
+        about: 'A deep pine-green background and green cards (in dark mode), a red upload card with a Santa hat and snowy scene on Home, pine branches and decorations on Library and Search, snow on playlist covers, holly on the piano player’s top bar, and faint, slow snowflakes behind Home, Library, Search and Settings.',
       },
     };
     const themeOf = (v: unknown): Theme => (v === 'christmas' ? 'christmas' : 'default');
@@ -94,7 +94,7 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
                   )
                   .join('')}
               </div>
-              <p class="hint">Snowfall stops when someone has Reduce Motion or Low Power Mode on, and the decorations never cover sheet music, the piano keys or any control.</p>
+              <p class="hint">The green colours apply in dark mode only; in light mode Christmas only adds the decorations and the red upload card. Snowfall stops when someone has Reduce Motion or Low Power Mode on, and nothing covers sheet music, the piano keys or a button’s icon.</p>
               <div style="display:flex;gap:8px;justify-content:flex-end">
                 <button type="button" class="btn" id="ts-reset">Reset</button>
                 <button type="button" class="btn btn-primary" id="ts-publish">Publish</button>
@@ -176,8 +176,8 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
         title: `Switch the app to ${THEMES[theme].name}?`,
         body:
           theme === 'christmas'
-            ? 'Everyone on version 1.1 or later sees the Christmas decorations within about 2 minutes, or the next time they open the app. Colours and layout stay the same. It stays on until you switch back to Default.'
-            : 'The Christmas decorations go away for everyone on version 1.1 or later within about 2 minutes, or the next time they open the app.',
+            ? 'Everyone on version 1.1 or later sees the Christmas look within about 2 minutes, or the next time they open the app: the decorations, the red upload card and, in dark mode, the green colours. The layout stays the same. It stays on until you switch back to Default.'
+            : 'The Christmas look (decorations and colours) goes away for everyone on version 1.1 or later within about 2 minutes, or the next time they open the app.',
         confirmLabel: `Publish ${THEMES[theme].name}`,
         input: { label: 'Note (optional)', placeholder: theme === 'christmas' ? 'e.g. Christmas 2026' : 'e.g. after the holidays' },
       });

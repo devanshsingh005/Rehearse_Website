@@ -79,6 +79,54 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
       return words.slice(0, 2).map((w) => w[0]).join('').toUpperCase() || title.slice(0, 2).toUpperCase();
     }
     const TEMPOS = { slow: 'Slow', medium: 'Medium', fast: 'Fast' };
+    /** What the app plays a song at when its score.json gives no tempo (iOS Song.fallbackTempoBPM). */
+    const FALLBACK_BPM = { slow: 70, medium: 90, fast: 120 };
+
+    // ---------- Tempo inside score.json (where the app reads it) ----------
+    type ScoreJson = Record<string, any>;
+    const asList = (v: any): any[] => (Array.isArray(v) ? v : v == null ? [] : [v]);
+    function firstMeasure(score: ScoreJson) {
+      const part = asList(score?.['score-partwise']?.part)[0];
+      return { part, measure: asList(part?.measure)[0] };
+    }
+    /** The opening tempo written in a score.json, in quarter notes per minute, or null. */
+    function scoreTempo(score: ScoreJson): number | null {
+      const { part, measure } = firstMeasure(score);
+      const sounds = [
+        ...asList(measure?.sound),
+        ...asList(measure?.direction).flatMap((d: any) => asList(d?.sound)),
+        ...asList(part?.sound),
+      ];
+      for (const sound of sounds) {
+        const bpm = Number(sound?.['@tempo']);
+        if (bpm > 0) return Math.round(bpm);
+      }
+      return null;
+    }
+    /** A copy of `score` that plays at `bpm`: a <sound tempo> in the first measure (valid MusicXML). */
+    function withTempo(score: ScoreJson, bpm: number): ScoreJson {
+      const copy = structuredClone(score);
+      const { part, measure } = firstMeasure(copy);
+      if (!measure) throw new Error('This score.json has no measures.');
+      if (part && 'sound' in part) delete part.sound; // the old converter wrote it under <part>
+      const value = String(bpm);
+      for (const d of asList(measure.direction)) for (const sound of asList(d?.sound)) if (sound && '@tempo' in sound) sound['@tempo'] = value;
+      const sounds = asList(measure.sound);
+      if (sounds.length) {
+        if (typeof sounds[0] === 'object' && sounds[0]) sounds[0]['@tempo'] = value;
+        else measure.sound = { '@tempo': value };
+      } else {
+        measure.sound = { '@tempo': value };
+        const order = measure['#order'];
+        if (Array.isArray(order)) order.splice(Math.max(order.lastIndexOf('attributes'), order.lastIndexOf('print')) + 1, 0, 'sound');
+      }
+      return copy;
+    }
+    async function fetchScore(url: string): Promise<ScoreJson> {
+      const res = await fetch(`${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`);
+      if (!res.ok) throw new Error(`Couldn't read score.json (${res.status}).`);
+      return res.json();
+    }
     const HANDS = { right_only: 'Right hand', left_only: 'Left hand', both: 'Both hands' };
 
     const table = document.getElementById('table')!;
@@ -257,7 +305,8 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
             <div class="field"><label for="f-composer">Composer</label><input class="input" id="f-composer" maxlength="200" required value="${esc(song.composer)}"></div>
             <div class="field"><label for="f-initials">Initials</label><input class="input" id="f-initials" maxlength="2" placeholder="From the title" value="${esc(song.initials)}"><span class="hint">Two letters, used in this dashboard. Left empty, it's taken from the title.</span></div>
             <div class="field"><label for="f-level">Level</label><select class="select" id="f-level">${[1, 2, 3, 4, 5].map((l) => option(l, `Level ${l}`, song.level)).join('')}</select></div>
-            <div class="field"><label for="f-tempo">Tempo</label><select class="select" id="f-tempo">${Object.entries(TEMPOS).map(([v, l]) => option(v, l, song.tempo)).join('')}</select></div>
+            <div class="field"><label for="f-tempo">Speed (shown in the app)</label><select class="select" id="f-tempo">${Object.entries(TEMPOS).map(([v, l]) => option(v, l, song.tempo)).join('')}</select></div>
+            <div class="field"><label for="f-bpm">Tempo (BPM)</label><input class="input" id="f-bpm" type="number" min="30" max="240" step="1" inputmode="numeric" placeholder="Reading score…"><span class="hint" id="f-bpm-hint">What Animation and Play Along play at, in quarter notes per minute. Saved into score.json.</span></div>
             <div class="field"><label for="f-hands">Hands</label><select class="select" id="f-hands">${Object.entries(HANDS).map(([v, l]) => option(v, l, song.hands)).join('')}</select></div>
             <div class="field"><label for="f-order">Order in Discover</label><input class="input" id="f-order" type="number" min="0" max="32767" value="${esc(song.sort_order)}"><span class="hint">Lower numbers show first.</span></div>
             <div class="field span-2"><label for="f-tags">Skill tags</label><input class="input" id="f-tags" placeholder="e.g. scales, legato" value="${esc(song.skill_tags.join(', '))}"><span class="hint">Separate with commas.</span></div>
@@ -300,6 +349,30 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
       };
       renderFiles();
 
+      // the tempo written in the song's score.json
+      const bpmInput = d.body.querySelector<HTMLInputElement>('#f-bpm')!;
+      const bpmHint = d.body.querySelector<HTMLElement>('#f-bpm-hint')!;
+      let loadedBpm: number | null = null;
+      const showBpm = (bpm: number | null) => {
+        loadedBpm = bpm;
+        bpmInput.value = bpm ? String(bpm) : '';
+        const speed = (d.body.querySelector<HTMLSelectElement>('#f-tempo')?.value ?? song.tempo) as keyof typeof FALLBACK_BPM;
+        bpmInput.placeholder = song.output_json_path ? `None: plays at ${FALLBACK_BPM[speed] ?? 90}` : 'Upload score.json first';
+      };
+      if (song.output_json_path) {
+        fetchScore(song.output_json_path)
+          .then((score) => showBpm(scoreTempo(score)))
+          .catch(() => {
+            bpmInput.placeholder = '';
+            bpmHint.textContent = "Couldn't read the tempo from score.json.";
+          });
+      } else {
+        showBpm(null);
+      }
+      d.body.querySelector('#f-tempo')!.addEventListener('change', () => {
+        if (!bpmInput.value) showBpm(loadedBpm);
+      });
+
       filesEl.addEventListener('change', async (e) => {
         const input = e.target as HTMLInputElement;
         const kind = input.dataset.kind as FileKind;
@@ -313,6 +386,7 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
         try {
           const url = await uploadFile(song.id, kind, file);
           (song as any)[FILES[kind].field] = url;
+          if (kind === 'score') showBpm(scoreTempo(JSON.parse(await file.text())));
           dirty = true;
           renderFiles();
           toast(`${FILES[kind].label.replace(/ \(.*\)/, '')} uploaded${isNew || !existing?.[FILES[kind].field] ? '. Save to apply.' : ''}`);
@@ -374,8 +448,20 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
           });
           if (ok === null) return;
         }
+        // a changed tempo goes into score.json
+        const bpmText = bpmInput.value.trim();
+        const bpm = bpmText ? Math.round(Number(bpmText)) : null;
+        if (bpm !== null && !(bpm >= 30 && bpm <= 240)) return toast('The tempo must be between 30 and 240 BPM.', 'error');
+        const tempoChanged = bpm !== null && bpm !== loadedBpm;
+        if (tempoChanged && !next.output_json_path) return toast('Upload score.json before setting the tempo.', 'error');
         await busy(btn, async () => {
           try {
+            if (tempoChanged && bpm !== null && next.output_json_path) {
+              const score = withTempo(await fetchScore(next.output_json_path), bpm);
+              const file = new File([JSON.stringify(score)], 'score.json', { type: 'application/json' });
+              next.output_json_path = await uploadFile(next.id, 'score', file);
+              loadedBpm = bpm;
+            }
             await rpc('admin_save_song', { p_song: next });
             toast(isNew ? 'Song created' : 'Changes saved');
             dirty = false;
